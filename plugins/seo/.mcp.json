@@ -1,0 +1,32 @@
+{
+  "mcpServers": {
+    "seo-workspace": {
+      "command": "node",
+      "args": ["./src/mcp-server.mjs"],
+      "cwd": ".",
+      "startup_timeout_sec": 20,
+      "tool_timeout_sec": 300
+    },
+    "google-analytics": {
+      "command": "node",
+      "args": ["./integrations/google-analytics/mcp/server.mjs"],
+      "cwd": ".",
+      "startup_timeout_sec": 20,
+      "tool_timeout_sec": 300
+    },
+    "google-search-console": {
+      "command": "node",
+      "args": ["./integrations/google-search-console/mcp/server.mjs"],
+      "cwd": ".",
+      "startup_timeout_sec": 20,
+      "tool_timeout_sec": 300
+    },
+    "google-business-profile": {
+      "command": "node",
+      "args": ["./integrations/google-business-profile/mcp/server.mjs"],
+      "cwd": ".",
+      "startup_timeout_sec": 20,
+      "tool_timeout_sec": 300
+    }
+  }
+}

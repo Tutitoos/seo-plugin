@@ -1,0 +1,11 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import { AuditStore } from "../../audit-store.mjs";
+import { marked } from "marked";
+import sanitizeHtml from "sanitize-html";
+const { id } = Astro.params;
+let audit;
+try { audit = await new AuditStore().get(id); } catch { return Astro.redirect("/"); }
+const html = sanitizeHtml(await marked.parse(audit.reportMarkdown || "_Esta auditoría todavía no tiene contenido._"), { allowedTags: sanitizeHtml.defaults.allowedTags.concat(["img"]), allowedAttributes: { a:["href","title"], img:["src","alt","title"] }, allowedSchemes:["http","https"] });
+---
+<Layout title={`${audit.manifest.title} · SEO Workspace`}><div class="detail"><p class="eyebrow">{audit.manifest.project.name} · {audit.manifest.createdAt.slice(0,10)}</p><h1>{audit.manifest.title}</h1><p class="lede">{audit.manifest.summary}</p><section class="stats"><div class="stat"><strong>{audit.manifest.score ?? "—"}</strong><span>puntuación</span></div><div class="stat"><strong>{audit.manifest.status}</strong><span>estado</span></div><div class="stat"><strong>{audit.manifest.skillsUsed.length}</strong><span>skills utilizadas</span></div></section><article class="prose" set:html={html} /></div></Layout>

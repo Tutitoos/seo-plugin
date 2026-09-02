@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Tutitoos/seo-plugin/schemas/profiles.schema.json",
+  "title": "SEO Plugin profile registry",
+  "type": "object",
+  "required": ["version", "defaultProfileId", "profiles"],
+  "properties": {
+    "version": { "const": 1 },
+    "defaultProfileId": { "type": ["string", "null"] },
+    "profiles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "services", "createdAt", "updatedAt"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+          "name": { "type": "string", "minLength": 1 },
+          "services": {
+            "type": "object",
+            "properties": {
+              "analytics": { "$ref": "#/$defs/service" },
+              "searchConsole": { "$ref": "#/$defs/service" },
+              "businessProfile": { "$ref": "#/$defs/service" }
+            }
+          },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "service": {
+      "type": "object",
+      "properties": {
+        "accountEmail": { "type": "string", "format": "email" },
+        "property": { "type": "string" },
+        "siteUrl": { "type": "string" },
+        "accountName": { "type": "string" },
+        "locationName": { "type": "string" }
+      }
+    }
+  }
+}

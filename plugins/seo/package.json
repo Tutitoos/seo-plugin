@@ -1,0 +1,31 @@
+{
+  "name": "@tutitoos/seo-codex-plugin",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev --host 127.0.0.1 --port 4321",
+    "dashboard": "astro dev --host 127.0.0.1 --port 4321 --open",
+    "build": "astro check && astro build",
+    "start": "HOST=127.0.0.1 PORT=4321 node dist/server/entry.mjs",
+    "check": "astro check && node scripts/check-syntax.mjs && node scripts/validate-links.mjs",
+    "smoke:tools": "node scripts/smoke-tools.mjs",
+    "test": "node --test test/*.test.mjs integrations/*/test/*.test.mjs",
+    "validate": "npm run check && npm test && npm run smoke:tools && npm run build"
+  },
+  "dependencies": {
+    "@astrojs/node": "11.1.5",
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "@tailwindcss/vite": "4.3.3",
+    "astro": "7.2.10",
+    "marked": "18.0.11",
+    "sanitize-html": "2.17.7",
+    "tailwindcss": "4.3.3",
+    "zod": "4.5.4"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.10",
+    "@types/sanitize-html": "^2.16.0",
+    "typescript": "^5.9.3"
+  }
+}

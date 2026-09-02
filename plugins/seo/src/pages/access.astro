@@ -1,0 +1,19 @@
+---
+import Layout from "../layouts/Layout.astro";
+import { accessStatus } from "../access-status.mjs";
+const status = await accessStatus();
+const profiles = /** @type {any[]} */ (status.profiles);
+---
+<Layout title="Accesos · SEO Workspace">
+  <p class="eyebrow">Permisos transparentes</p><h1>Qué puede ver. Y qué no.</h1>
+  <p class="lede">Las credenciales permanecen en el Llavero. Esta pantalla solo comprueba su existencia y nunca lee ni muestra tokens.</p>
+  {profiles.map((profile: any) => <section class="panel">
+    <div class="section-head"><div><h2>{profile.name}</h2><span class="muted">{profile.id}{status.defaultProfileId===profile.id ? " · predeterminado" : ""}</span></div></div>
+    {(Object.values(profile.services) as any[]).map((service) => <div class="access-row">
+      <div><strong><span class:list={["status",{on:service.connected}]}></span>{service.label}</strong><div class="muted">{service.accountEmail || "Sin cuenta asignada"}</div></div>
+      <div><span class="pill">{service.connected ? "Conectado" : "Pendiente"}</span><div class="muted" style="margin-top:8px">{service.scope}</div></div>
+      <div>{service.sees}</div>
+    </div>)}
+  </section>)}
+  <section class="panel"><h2>Acceso local</h2><p>Escritura limitada a <code>.seo-data</code>. Dashboard de solo lectura en <code>127.0.0.1</code>. Sin sincronización remota de informes.</p></section>
+</Layout>

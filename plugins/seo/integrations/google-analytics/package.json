@@ -1,0 +1,15 @@
+{
+  "name": "google-analytics-codex-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check mcp/server.mjs && node --check mcp/lib/oauth.mjs && node --check mcp/lib/google-analytics-api.mjs && node --check mcp/lib/keychain.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "zod": "4.5.4"
+  }
+}
