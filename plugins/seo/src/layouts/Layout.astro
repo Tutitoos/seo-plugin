@@ -1,12 +1,14 @@
 ---
 import "../styles/global.css";
 const { title = "SEO", description = "Auditorías privadas y capacidades del plugin SEO" } = Astro.props;
+const path = Astro.url.pathname;
+const isActive = (href: string) => href === "/" ? path === "/" || path.startsWith("/audits/") : path.startsWith(href);
 ---
 <!doctype html>
 <html lang="es">
-  <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width" /><meta name="description" content={description} /><title>{title}</title></head>
+  <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width" /><meta name="description" content={description} /><meta name="theme-color" content="#f4f2eb" /><title>{title}</title></head>
   <body>
-    <header class="nav"><div class="shell nav-inner"><a class="brand" href="/"><span class="brand-mark">S</span><span>SEO Workspace</span></a><nav class="nav-links" aria-label="Principal"><a href="/">Auditorías</a><a href="/skills">Skills</a><a href="/access">Accesos</a></nav></div></header>
+    <header class="nav"><div class="shell nav-inner"><a class="brand" href="/"><span class="brand-mark">S/</span><span>SEO Workspace</span></a><nav class="nav-links" aria-label="Principal"><a href="/" aria-current={isActive("/") ? "page" : undefined}>Auditorías</a><a href="/skills" aria-current={isActive("/skills") ? "page" : undefined}>Skills</a><a href="/access" aria-current={isActive("/access") ? "page" : undefined}>Accesos</a></nav></div></header>
     <main class="shell"><slot /></main>
   </body>
 </html>

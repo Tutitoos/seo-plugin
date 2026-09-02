@@ -1,7 +1,7 @@
 {
   "name": "seo",
-  "version": "1.0.0",
-  "description": "Suite SEO y marketing con 53 skills, Google multi-account y auditorías privadas.",
+  "version": "1.0.0+codex.20260902145639",
+  "description": "Suite SEO y marketing con 53 skills, Google multi-account y auditor\u00edas privadas.",
   "author": {
     "name": "Tutitoos",
     "url": "https://github.com/Tutitoos"
@@ -9,19 +9,30 @@
   "homepage": "https://github.com/Tutitoos/seo-plugin",
   "repository": "https://github.com/Tutitoos/seo-plugin",
   "license": "MIT",
-  "keywords": ["seo", "marketing", "google-analytics", "search-console", "business-profile", "audits"],
+  "keywords": [
+    "seo",
+    "marketing",
+    "google-analytics",
+    "search-console",
+    "business-profile",
+    "audits"
+  ],
   "skills": "./skills/",
   "interface": {
     "displayName": "SEO",
     "shortDescription": "SEO, marketing y Google multi-account",
-    "longDescription": "Reúne 50 Marketing Skills, Analytics, Search Console y Business Profile con perfiles multi-account y un dashboard local de auditorías privadas.",
+    "longDescription": "Re\u00fane 50 Marketing Skills, Analytics, Search Console y Business Profile con perfiles multi-account y un dashboard local de auditor\u00edas privadas.",
     "developerName": "Tutitoos",
     "category": "Marketing",
-    "capabilities": ["Interactive", "Read", "Local Write"],
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Local Write"
+    ],
     "defaultPrompt": [
       "Audita el SEO de mi proyecto y guarda el resultado",
       "Analiza Analytics y Search Console para mi perfil",
-      "Muéstrame las capacidades y accesos del plugin"
+      "Mu\u00e9strame las capacidades y accesos del plugin"
     ],
     "brandColor": "#0B6B57"
   },

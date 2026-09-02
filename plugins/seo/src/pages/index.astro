@@ -9,20 +9,20 @@ const completed = all.filter((item) => item.status === "completed").length;
 const types = new Set(all.map((item) => item.auditType)).size;
 ---
 <Layout title="Auditorías · SEO Workspace">
-  <p class="eyebrow">Workspace privado</p><h1>Todas tus auditorías, en un solo lugar.</h1>
-  <p class="lede">Resultados locales organizados por proyecto y fecha. Nada de esta galería se publica en GitHub.</p>
+  <header class="page-intro"><p class="eyebrow">Workspace privado · Solo local</p><h1>Todas tus auditorías, en un solo lugar.</h1>
+  <p class="lede">Resultados locales organizados por proyecto y fecha. Nada de esta galería se publica en GitHub.</p></header>
   <section class="stats"><div class="stat"><strong>{all.length}</strong><span>auditorías guardadas</span></div><div class="stat"><strong>{completed}</strong><span>completadas</span></div><div class="stat"><strong>{types}</strong><span>tipos de análisis</span></div></section>
   <form class="panel filters" method="get">
-    <input type="search" name="query" value={params.query} placeholder="Buscar auditorías…" aria-label="Buscar" />
-    <select name="project" aria-label="Proyecto"><option value="">Todos los proyectos</option>{projects.map((p) => <option value={p.slug} selected={params.project===p.slug}>{p.name}</option>)}</select>
-    <select name="status" aria-label="Estado"><option value="">Todos los estados</option>{["completed","draft","failed"].map((s)=><option value={s} selected={params.status===s}>{s}</option>)}</select>
-    <input type="date" name="dateFrom" value={params.dateFrom} aria-label="Desde" />
-    <input type="date" name="dateTo" value={params.dateTo} aria-label="Hasta" />
+    <label class="field"><span class="field-label">Buscar</span><input type="search" name="query" value={params.query} placeholder="Título o resumen…" /></label>
+    <label class="field"><span class="field-label">Proyecto</span><select name="project"><option value="">Todos</option>{projects.map((p) => <option value={p.slug} selected={params.project===p.slug}>{p.name}</option>)}</select></label>
+    <label class="field"><span class="field-label">Estado</span><select name="status"><option value="">Todos</option>{["completed","draft","failed"].map((s)=><option value={s} selected={params.status===s}>{s}</option>)}</select></label>
+    <label class="field"><span class="field-label">Desde</span><input type="date" name="dateFrom" value={params.dateFrom} /></label>
+    <label class="field"><span class="field-label">Hasta</span><input type="date" name="dateTo" value={params.dateTo} /></label>
     <button type="submit">Filtrar</button>
   </form>
   <div class="section-head"><h2>Auditorías</h2><span class="muted">{audits.length} resultados</span></div>
   <section class="grid">
-    {audits.map((audit) => <a class="card" href={`/audits/${audit.id}`}><div class="card-top"><span class="pill">{audit.auditType}</span><span class="muted">{audit.createdAt.slice(0,10)}</span></div><h2>{audit.title}</h2><p>{audit.summary || "Informe disponible para consultar."}</p><div class="card-footer"><div><strong>{audit.project.name}</strong><div class="muted">{audit.profileId || "Sin perfil"}</div></div>{audit.score !== null && <span class="score">{audit.score}</span>}</div></a>)}
+    {audits.map((audit) => <a class="card" href={`/audits/${audit.id}`}><div class="card-top"><span class="pill">{audit.auditType}</span><span class="muted">{audit.createdAt.slice(0,10)}</span></div><div><h2>{audit.title}</h2><p>{audit.summary || "Informe disponible para consultar."}</p></div><div class="card-footer"><div><strong>{audit.project.name}</strong><div class="muted">{audit.profileId || "Sin perfil"}</div></div>{audit.score !== null && <span class="score">{audit.score}</span>}</div></a>)}
     {!audits.length && <div class="panel empty"><strong>Aún no hay auditorías con estos filtros.</strong><p>Usa <code>save_audit_result</code> desde Codex para guardar la primera.</p></div>}
   </section>
 </Layout>
