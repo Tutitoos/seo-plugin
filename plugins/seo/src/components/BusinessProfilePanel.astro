@@ -1,0 +1,118 @@
+---
+// @ts-nocheck -- La captura llega validada desde BusinessProfileCaptureStore.
+const { auditId, state, sourceCoverage = null } = Astro.props;
+const capture = state?.capture || null;
+const reference = state?.reference || null;
+const location = capture?.location || {};
+const media = capture?.media || [];
+const reviews = capture?.reviews || [];
+const posts = capture?.posts || [];
+const attributes = Array.isArray(capture?.attributes) ? capture.attributes : Object.values(capture?.attributes || {});
+const primaryCategory = location.categories?.primaryCategory?.displayName || location.categories?.primaryCategory?.name || "Categoría sin informar";
+const title = location.title || "Perfil de empresa sin datos";
+const phone = location.phoneNumbers?.primaryPhone || null;
+const website = (() => { try { const url = new URL(location.websiteUri); return url.protocol === "https:" ? url.toString() : null; } catch { return null; } })();
+const mapsUri = (() => { try { const candidate = location.metadata?.mapsUri || (location.metadata?.placeId ? `https://www.google.com/maps/search/?api=1&query_place_id=${encodeURIComponent(location.metadata.placeId)}` : ""); const url = new URL(candidate); return url.protocol === "https:" ? url.toString() : null; } catch { return null; } })();
+const addressParts = [...(location.storefrontAddress?.addressLines || []), [location.storefrontAddress?.postalCode, location.storefrontAddress?.locality].filter(Boolean).join(" "), location.storefrontAddress?.administrativeArea].filter(Boolean);
+const address = addressParts.join(", ");
+const rating = capture?.reviewSummary?.averageRating;
+const reviewCount = capture?.reviewSummary?.totalReviewCount;
+const starValue = (value) => ({ ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5 }[value] || Number(value) || 0);
+const dateLabel = (value) => value ? new Intl.DateTimeFormat("es-ES", { dateStyle: "medium" }).format(new Date(value)) : "Sin fecha";
+const dateTimeLabel = (value) => value ? new Intl.DateTimeFormat("es-ES", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "—";
+const categoryLabel = (value) => ({ COVER: "Portada", PROFILE: "Perfil", LOGO: "Logotipo", EXTERIOR: "Exterior", INTERIOR: "Interior", PRODUCT: "Producto", AT_WORK: "En acción", FOOD_AND_DRINK: "Producto", MENU: "Carta", TEAM: "Equipo", ADDITIONAL: "Adicional" }[String(value || "").toUpperCase()] || String(value || "Adicional").replaceAll("_", " "));
+const serviceLabel = (item) => item.displayName || item.freeFormServiceItem?.label?.displayName || item.freeFormServiceItem?.label?.description || item.structuredServiceItem?.serviceTypeId || "Servicio sin nombre";
+const attributeLabel = (item) => item.displayName || item.attributeId || item.name || "Atributo";
+const coverageItems = reference ? Object.entries(reference.coverage || {}) : [];
+const freshnessDays = reference ? Math.max(0, Math.floor((Date.now() - Date.parse(reference.capturedAt)) / 86_400_000)) : null;
+const checks = capture ? [
+  { label: "Identidad y contacto", ok: Boolean(location.title && phone && website && address), detail: "Nombre, dirección, teléfono y web deben estar completos y coincidir con el sitio.", action: "Completa los campos ausentes y contrasta el NAP con las páginas de contacto y LocalBusiness." },
+  { label: "Categoría y servicios", ok: Boolean(location.categories?.primaryCategory && location.serviceItems?.length), detail: "La categoría principal y los servicios ayudan a Google a interpretar la actividad.", action: "Revisa la categoría principal y describe todos los servicios que realmente presta la empresa." },
+  { label: "Horarios", ok: Boolean(location.regularHours?.periods?.length), detail: "Los horarios completos reducen dudas y evitan información contradictoria.", action: "Configura horario habitual y fechas especiales antes de festivos o cierres." },
+  { label: "Contenido visual", ok: media.some((item) => item.source === "owner") && media.some((item) => ["COVER", "LOGO", "EXTERIOR"].includes(String(item.category).toUpperCase())), detail: "Una galería variada permite reconocer el negocio y sus servicios.", action: "Añade portada, logotipo, exterior e imágenes recientes del servicio; verifica después su presencia en Google." },
+  { label: "Actividad reciente", ok: reviews.some((item) => item.reviewReply) || posts.length > 0, detail: "Respuestas y publicaciones recientes muestran que la ficha está atendida.", action: "Responde las reseñas pendientes y publica novedades útiles, sin automatizar respuestas desde este dashboard." },
+] : [];
+const ownerMedia = media.filter((item) => item.source !== "customer").length;
+const customerMedia = media.length - ownerMedia;
+const localStatus = state?.status || "unavailable";
+const statusLabel = ({ available: "Datos disponibles", partial: "Cobertura parcial", unavailable: "Sin datos", expired: "Contenido caducado" }[localStatus] || "Sin datos");
+const performanceTotals = (capture?.performance?.series || []).map((series) => {
+  const values = series.points.map((point) => point.value).filter(Number.isFinite);
+  const recent = values.slice(-28).reduce((sum, value) => sum + value, 0);
+  const previous = values.slice(-56, -28).reduce((sum, value) => sum + value, 0);
+  const delta = previous ? (recent - previous) / previous * 100 : null;
+  return { ...series, total: values.reduce((sum, value) => sum + value, 0), recent, delta };
+}).slice(0, 6);
+---
+
+<div class={`business-profile business-profile-${localStatus}`}>
+  {!capture ? <section class="business-profile-empty" role={localStatus === "expired" ? "status" : "alert"}>
+    <div class="business-empty-icon" aria-hidden="true">⌖</div>
+    <div><span class="pill">{statusLabel}</span><h2>El Perfil de empresa necesita atención.</h2><p>{state?.reason || sourceCoverage?.detail || "La auditoría no pudo consultar una ubicación de Google Business Profile."}</p>
+      <div class="business-next-action"><strong>Qué hacer ahora</strong><p>{localStatus === "expired" ? "Ejecuta una nueva auditoría `/seo full`; una auditoría completada nunca se modifica." : sourceCoverage?.detail?.toLowerCase().includes("cuota") ? "Comprueba en Google Cloud que el proyecto tenga acceso aprobado y una cuota superior a cero. Después vuelve a ejecutar `/seo full`." : "Conecta la cuenta, guarda accountName y locationName en el perfil Google y vuelve a ejecutar `/seo full`."}</p></div>
+    </div>
+  </section> : <>
+    <section class="business-profile-hero">
+      <div class="business-gallery-feature">
+        {media.filter((item) => item.assetId).slice(0, 3).map((item, index) => <img src={`/api/audits/${auditId}/business-profile/assets/${item.assetId}.webp`} alt={item.description || `${categoryLabel(item.category)} de ${title}`} loading={index ? "lazy" : "eager"} />)}
+        {!media.some((item) => item.assetId) && <div class="business-gallery-placeholder"><span aria-hidden="true">▧</span><strong>Sin imágenes disponibles</strong><small>No se muestran imágenes de relleno.</small></div>}
+        {media.length > 3 && <span class="business-photo-count">{media.length} imágenes</span>}
+      </div>
+      <div class="business-profile-summary">
+        <div class="business-profile-status"><span class="pill">{statusLabel}</span><span>Captura de {dateTimeLabel(reference.capturedAt)}</span></div>
+        <div><h2>{title}</h2><p class="business-category">{primaryCategory}</p></div>
+        {(rating != null || reviewCount != null) && <div class="business-rating"><strong>{rating != null ? Number(rating).toLocaleString("es-ES", { maximumFractionDigits: 1 }) : "—"}</strong><span aria-label={`${rating || 0} estrellas`}>★★★★★</span><a href="#business-reviews">{reviewCount ?? "—"} reseñas</a></div>}
+        <dl class="business-facts">
+          {address && <div><dt>Dirección</dt><dd>{address}</dd></div>}
+          {phone && <div><dt>Teléfono</dt><dd>{phone}</dd></div>}
+          <div><dt>Estado</dt><dd>{location.openInfo?.status === "OPEN" ? "Abierto" : location.openInfo?.status === "CLOSED_PERMANENTLY" ? "Cerrado permanentemente" : location.openInfo?.status || "Sin confirmar"}</dd></div>
+          {location.serviceArea && <div><dt>Área de servicio</dt><dd>{location.serviceArea.businessType || "Configurada"}</dd></div>}
+        </dl>
+        <div class="business-actions">
+          {website && <a class="business-action" href={website} target="_blank" rel="noreferrer">Sitio web ↗</a>}
+          {mapsUri && <a class="business-action" href={mapsUri} target="_blank" rel="noreferrer">Cómo llegar ↗</a>}
+          {phone && <a class="business-action" href={`tel:${phone.replace(/[^+\d]/g, "")}`}>Llamar</a>}
+          {mapsUri && <a class="business-action muted-action" href={mapsUri} target="_blank" rel="noreferrer">Ver en Google ↗</a>}
+        </div>
+      </div>
+    </section>
+
+    <section class="business-freshness" aria-label="Retención temporal de los datos">
+      <div><span class="eyebrow">Captura privada temporal</span><strong>{freshnessDays === 0 ? "Actualizada hoy" : `Actualizada hace ${freshnessDays} días`}</strong><p>Google permite conservar este contenido durante un máximo de 30 días.</p></div>
+      <div><span>Caduca</span><strong>{dateTimeLabel(reference.expiresAt)}</strong><small>Después se ocultarán ficha, imágenes, reseñas, publicaciones y rendimiento.</small></div>
+    </section>
+
+    {performanceTotals.length > 0 && <section><div class="section-head"><div><p class="eyebrow">Último periodo capturado</p><h2>Rendimiento local</h2></div><span class="muted">Datos temporales de Google</span></div><div class="business-performance-grid">{performanceTotals.map((metric) => <article><span>{metric.label}</span><strong>{metric.total.toLocaleString("es-ES", { maximumFractionDigits: 1 })}</strong><div><b>{metric.recent.toLocaleString("es-ES", { maximumFractionDigits: 1 })}</b><small> últimos 28 días</small></div><p class={metric.delta == null ? "neutral" : metric.delta >= 0 ? "positive" : "negative"}>{metric.delta == null ? "Sin periodo anterior comparable" : `${metric.delta >= 0 ? "+" : ""}${metric.delta.toLocaleString("es-ES", { maximumFractionDigits: 1 })}% vs. 28 días anteriores`}</p></article>)}</div></section>}
+
+    <section><div class="section-head"><div><p class="eyebrow">Completitud verificable</p><h2>Salud del perfil</h2></div><span class="muted">Sin puntuación inventada</span></div><div class="business-health-grid">{checks.map((check) => <article class={check.ok ? "business-check-ok" : "business-check-attention"}><header><i aria-hidden="true"></i><strong>{check.label}</strong><span>{check.ok ? "Correcto" : "Revisar"}</span></header><p>{check.detail}</p>{!check.ok && <div><b>Acción</b><p>{check.action}</p></div>}</article>)}</div></section>
+
+    <section><div class="section-head"><div><p class="eyebrow">Evidencia visual</p><h2>Galería</h2></div><span class="muted">{ownerMedia} del propietario · {customerMedia} de clientes</span></div>
+      <div class="business-gallery-filters" aria-label="Filtrar galería"><button type="button" data-media-filter="all" aria-pressed="true">Todas</button><button type="button" data-media-filter="owner" aria-pressed="false">Propietario</button><button type="button" data-media-filter="customer" aria-pressed="false">Clientes</button>{[...new Set(media.map((item) => item.category))].slice(0, 8).map((category) => <button type="button" data-media-filter={String(category).toLowerCase()} aria-pressed="false">{categoryLabel(category)}</button>)}</div>
+      {media.some((item) => item.assetId) ? <div class="business-media-grid">{media.filter((item) => item.assetId).map((item) => <figure data-media-source={item.source} data-media-category={String(item.category).toLowerCase()}><img src={`/api/audits/${auditId}/business-profile/assets/${item.assetId}.webp`} alt={item.description || `${categoryLabel(item.category)} de ${title}`} loading="lazy" /><figcaption><span>{categoryLabel(item.category)}</span><strong>{item.source === "customer" ? "Cliente" : "Propietario"}</strong><small>{item.createTime ? dateLabel(item.createTime) : "Fecha no disponible"}{item.viewCount != null ? ` · ${item.viewCount.toLocaleString("es-ES")} visualizaciones` : ""}</small></figcaption></figure>)}</div> : <div class="panel tab-empty"><strong>La captura no contiene miniaturas.</strong><p>Los metadatos se conservaron, pero Google no devolvió una imagen válida o la descarga falló.</p></div>}
+    </section>
+
+    <section><div class="section-head"><div><p class="eyebrow">Información operativa</p><h2>Servicios, horarios y atributos</h2></div></div><div class="business-info-grid">
+      <article><h3>Servicios</h3>{location.serviceItems?.length ? <ul>{location.serviceItems.slice(0, 30).map((item) => <li><strong>{serviceLabel(item)}</strong>{item.freeFormServiceItem?.price && <span>{item.freeFormServiceItem.price.units} {item.freeFormServiceItem.price.currencyCode}</span>}</li>)}</ul> : <p class="muted">Google no devolvió servicios declarados.</p>}</article>
+      <article><h3>Horario habitual</h3>{location.regularHours?.periods?.length ? <ul>{location.regularHours.periods.map((period) => <li><strong>{period.openDay || "Día"}</strong><span>{period.openTime ? `${period.openTime.hours ?? 0}:${String(period.openTime.minutes ?? 0).padStart(2,"0")}–${period.closeTime?.hours ?? 0}:${String(period.closeTime?.minutes ?? 0).padStart(2,"0")}` : "Horario continuo o no detallado"}</span></li>)}</ul> : <p class="muted">No hay horario habitual dentro de la cobertura.</p>}</article>
+      <article><h3>Atributos</h3>{attributes.length ? <ul>{attributes.slice(0, 40).map((item) => <li><strong>{attributeLabel(item)}</strong><span>{item.values?.length ? item.values.join(", ") : item.valueType || "Declarado"}</span></li>)}</ul> : <p class="muted">Sin atributos o sin cobertura de la API.</p>}</article>
+    </div></section>
+
+    <section id="business-reviews"><div class="section-head"><div><p class="eyebrow">Voz del cliente</p><h2>Reseñas recientes</h2></div><span class="muted">{reviews.length} conservadas temporalmente</span></div>{reviews.length ? <div class="business-review-grid">{reviews.map((review) => <article><header><div class="review-avatar" aria-hidden="true">{(review.reviewer?.displayName || "A").slice(0,1).toUpperCase()}</div><div><strong>{review.reviewer?.isAnonymous ? "Usuario anónimo" : review.reviewer?.displayName || "Cliente"}</strong><span>{dateLabel(review.updateTime || review.createTime)}</span></div><span class="review-stars" aria-label={`${starValue(review.starRating)} estrellas`}>{"★★★★★".slice(0, starValue(review.starRating))}{"☆☆☆☆☆".slice(starValue(review.starRating))}</span></header>{review.comment && <p>{review.comment}</p>}{review.reviewReply ? <div class="review-reply"><strong>Respuesta del propietario</strong><p>{review.reviewReply.comment}</p><small>{dateLabel(review.reviewReply.updateTime)}</small></div> : <div class="review-pending">Sin respuesta dentro de la cobertura</div>}</article>)}</div> : <div class="panel tab-empty"><strong>No hay reseñas disponibles.</strong><p>Puede que la ficha no tenga reseñas o que este recurso no estuviera cubierto.</p></div>}</section>
+
+    <section><div class="section-head"><div><p class="eyebrow">Actividad de la ficha</p><h2>Publicaciones recientes</h2></div><span class="muted">{posts.length} conservadas temporalmente</span></div>{posts.length ? <div class="business-post-grid">{posts.map((post) => <article><span class="pill">{post.topicType || post.state || "Publicación"}</span><h3>{post.summary?.split(/[.!?]/)[0] || "Publicación sin título"}</h3><p>{post.summary || "Google no devolvió un resumen."}</p><footer><span>{dateLabel(post.updateTime || post.createTime)}</span>{post.searchUrl && <a href={post.searchUrl} target="_blank" rel="noreferrer">Ver en Google ↗</a>}</footer></article>)}</div> : <div class="panel tab-empty"><strong>Sin publicaciones disponibles.</strong><p>No se simula contenido cuando la API no devuelve publicaciones.</p></div>}</section>
+
+    <section><div class="section-head"><div><p class="eyebrow">Calidad del dato</p><h2>Cobertura y diagnósticos</h2></div></div><div class="business-coverage-grid">{coverageItems.map(([key, value]) => <article class={`business-coverage-${value.status}`}><header><i></i><strong>{({ location: "Ficha", media: "Imágenes", reviews: "Reseñas", posts: "Publicaciones", performance: "Rendimiento" }[key] || key)}</strong><span>{value.status}</span></header><p>{value.detail || "Sin detalle adicional."}</p></article>)}</div>{capture.diagnostics?.length > 0 && <div class="business-diagnostics">{capture.diagnostics.map((item) => <article><code>{item.code}</code><strong>{item.message}</strong>{item.nextAction && <p>{item.nextAction}</p>}<small>{item.retryable ? "Se puede reintentar" : "Requiere intervención"}{item.attemptedAt ? ` · ${dateTimeLabel(item.attemptedAt)}` : ""}</small></article>)}</div>}</section>
+  </>}
+</div>
+
+<script>
+  document.querySelectorAll<HTMLElement>(".business-profile").forEach((profile) => {
+    const buttons = profile.querySelectorAll<HTMLButtonElement>("[data-media-filter]");
+    const items = profile.querySelectorAll<HTMLElement>("[data-media-source]");
+    buttons.forEach((button) => button.addEventListener("click", () => {
+      const filter = button.dataset.mediaFilter || "all";
+      buttons.forEach((item) => item.setAttribute("aria-pressed", String(item === button)));
+      items.forEach((item) => item.hidden = filter !== "all" && item.dataset.mediaSource !== filter && item.dataset.mediaCategory !== filter);
+    }));
+  });
+</script>

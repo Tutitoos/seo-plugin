@@ -5,7 +5,7 @@ import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
-test("publica conexión y cinco herramientas de lectura", async () => {
+test("publica conexión y ocho herramientas de lectura", async () => {
   const pluginRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
   const transport = new StdioClientTransport({
     command: "node",
@@ -20,9 +20,12 @@ test("publica conexión y cinco herramientas de lectura", async () => {
     assert.deepEqual(
       response.tools.map((tool) => tool.name).sort(),
       [
+        "get_business_profile_attributes",
         "get_business_profile_location",
         "list_business_profile_accounts",
         "list_business_profile_locations",
+        "list_business_profile_media",
+        "list_business_profile_posts",
         "list_business_profile_reviews",
         "manage_business_profile_connection",
         "query_business_profile_performance",

@@ -9,6 +9,7 @@ import { AuditDetailStore } from "./audit-detail-store.mjs";
 import { measureAuditStorage } from "./audit-storage.mjs";
 import { AuditRunStore } from "./run-status.mjs";
 import { getAuditChanges } from "./audit-history.mjs";
+import { BusinessProfileCaptureStore } from "./business-profile-capture-store.mjs";
 
 const server = new McpServer({ name: "seo-workspace", version: "1.0.0" });
 const profiles = new ProfileStore();
@@ -16,6 +17,7 @@ const audits = new AuditStore();
 const projectSettings = new ProjectSettingsStore();
 const auditDetails = new AuditDetailStore();
 const auditRuns = new AuditRunStore();
+const businessProfileCaptures = new BusinessProfileCaptureStore();
 const success = (data) => ({ content: [{ type: "text", text: JSON.stringify(data, null, 2) }], structuredContent: data });
 const safely = async (fn) => { try { return success(await fn()); } catch (error) { return { isError: true, content: [{ type: "text", text: error.message || String(error) }] }; } };
 
@@ -58,6 +60,12 @@ const pageSchema = z.object({
   response: z.record(z.string(), z.unknown()).optional(), indexability: z.record(z.string(), z.unknown()).optional(), metadata: z.record(z.string(), z.unknown()).optional(), links: z.record(z.string(), z.unknown()).optional(), images: z.record(z.string(), z.unknown()).optional(), schemas: z.record(z.string(), z.unknown()).optional(), performance: z.record(z.string(), z.unknown()).optional(), searchConsole: z.record(z.string(), z.unknown()).optional(), analytics: z.record(z.string(), z.unknown()).optional(), screenshots: z.array(z.object({ label: z.string(), path: z.string() })).optional(), diagnostics: z.array(z.record(z.string(), z.unknown())).optional(), metrics: z.record(z.string(), z.unknown()).optional(),
   expectedLocale: z.string().optional(), declaredLocale: z.string().optional(), aliases: z.array(z.string()).optional(), healthReason: z.string().optional(), evidence: z.record(z.string(), z.unknown()).optional(),
 });
+const businessProfileCoverageSchema = z.object({ status: z.enum(["available", "partial", "unavailable"]), detail: z.string().optional() });
+const businessProfileDiagnosticSchema = z.object({ code: z.string(), stage: z.string().optional(), message: z.string(), retryable: z.boolean().optional(), nextAction: z.string().optional(), attemptedAt: z.string().optional() });
+const businessProfileMediaSchema = z.object({ id: z.string(), name: z.string().optional(), source: z.enum(["owner", "customer"]).optional(), category: z.string().optional(), description: z.string().optional(), createTime: z.string().optional(), dimensions: z.object({ widthPixels: z.number().optional(), heightPixels: z.number().optional() }).optional(), widthPixels: z.number().optional(), heightPixels: z.number().optional(), insights: z.object({ viewCount: z.union([z.string(), z.number()]).optional() }).optional(), viewCount: z.union([z.string(), z.number()]).optional(), thumbnailUrl: z.string().optional(), googleUrl: z.string().optional() });
+const businessProfileReviewSchema = z.object({ reviewId: z.string().optional(), name: z.string().optional(), reviewer: z.object({ displayName: z.string().optional(), isAnonymous: z.boolean().optional() }).optional(), starRating: z.string().optional(), comment: z.string().optional(), createTime: z.string().optional(), updateTime: z.string().optional(), reviewReply: z.object({ comment: z.string().optional(), updateTime: z.string().optional() }).optional() });
+const businessProfilePostSchema = z.object({ name: z.string().optional(), summary: z.string().optional(), topicType: z.string().optional(), state: z.string().optional(), createTime: z.string().optional(), updateTime: z.string().optional(), searchUrl: z.string().optional(), callToAction: z.record(z.string(), z.unknown()).optional(), event: z.record(z.string(), z.unknown()).optional(), offer: z.record(z.string(), z.unknown()).optional(), media: z.array(z.record(z.string(), z.unknown())).max(4).optional() });
+const businessProfilePerformanceSchema = z.object({ startDate: z.string(), endDate: z.string(), series: z.array(z.object({ key: z.string(), label: z.string(), unit: z.string().optional(), color: z.enum(["lime", "blue", "orange", "green", "red", "ink"]).optional(), points: z.array(z.object({ date: z.string(), value: z.number().nullable() })).max(366) })).max(11) });
 
 server.registerTool("manage_google_profiles", {
   title: "Gestionar perfiles Google",
@@ -94,6 +102,43 @@ server.registerTool("save_audit_result", {
   },
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
 }, (input) => safely(() => audits.save(input)));
+
+server.registerTool("save_business_profile_capture", {
+  title: "Guardar captura temporal de Business Profile",
+  description: "Guarda una captura privada de ficha, miniaturas, reseñas, publicaciones y rendimiento durante un máximo de 30 días, y la vincula a una auditoría draft.",
+  inputSchema: {
+    auditId: z.string(), profileId: z.string(), accountName: z.string().optional(), locationName: z.string().optional(), status: z.enum(["available", "partial", "unavailable"]).optional(),
+    coverage: z.object({ location: businessProfileCoverageSchema.optional(), media: businessProfileCoverageSchema.optional(), reviews: businessProfileCoverageSchema.optional(), posts: businessProfileCoverageSchema.optional(), performance: businessProfileCoverageSchema.optional() }).optional(),
+    location: z.record(z.string(), z.unknown()).optional(), attributes: z.union([z.array(z.unknown()), z.record(z.string(), z.unknown())]).optional(),
+    reviewSummary: z.object({ averageRating: z.number().nullable().optional(), totalReviewCount: z.number().int().nullable().optional() }).optional(),
+    media: z.array(businessProfileMediaSchema).max(100).optional(), reviews: z.array(businessProfileReviewSchema).max(50).optional(), posts: z.array(businessProfilePostSchema).max(50).optional(),
+    performance: businessProfilePerformanceSchema.optional(), diagnostics: z.array(businessProfileDiagnosticSchema).max(50).optional(),
+  },
+  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+}, (input) => safely(async () => {
+  const { manifest } = await audits.get(input.auditId);
+  if (manifest.status === "completed") throw new Error(`La auditoría ${manifest.id} está completada y es inmutable. Crea un nuevo snapshot.`);
+  if (manifest.profileId && manifest.profileId !== input.profileId) throw new Error("La auditoría pertenece a otro perfil Google.");
+  const { profile } = await profiles.get(input.profileId);
+  const defaults = profile.services?.businessProfile || {};
+  const accountName = input.accountName || defaults.accountName;
+  const locationName = input.locationName || defaults.locationName;
+  if (!accountName || !locationName) throw new Error(`El perfil ${profile.id} necesita accountName y locationName para guardar la captura.`);
+  const saved = await businessProfileCaptures.save({ ...input, accountName, locationName });
+  await audits.attachBusinessProfileCapture(manifest.id, saved.reference);
+  return { auditId: manifest.id, reference: saved.reference, bytes: saved.bytes, limits: { bytes: 64_000_000, media: 40, reviews: 20, posts: 20 } };
+}));
+
+server.registerTool("get_business_profile_capture", {
+  title: "Consultar captura temporal de Business Profile",
+  description: "Devuelve la captura de Business Profile vinculada a una auditoría mientras siga dentro de sus 30 días de retención.",
+  inputSchema: { auditId: z.string(), profileId: z.string().optional() },
+  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+}, ({ auditId, profileId }) => safely(async () => {
+  const { manifest } = await audits.get(auditId);
+  if (profileId && manifest.businessProfileCapture?.profileId !== profileId) throw new Error("La captura solicitada pertenece a otro perfil.");
+  return businessProfileCaptures.get(manifest.businessProfileCapture);
+}));
 
 server.registerTool("save_audit_findings", {
   title: "Guardar hallazgos estructurados",

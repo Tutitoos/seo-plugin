@@ -26,7 +26,7 @@ Produce una auditoría SEO integral, trazable y guardada en el almacén privado 
 - Evalúa SEO para IA y oportunidades de contenido cuando exista evidencia suficiente.
 - En Search Console consulta primero la dimensión `date` sin filtros para conservar los totales temporales. Rellena fechas ausentes con `null`, nunca con cero. Calcula medias móviles de 7 y 28 días. Consulta aparte `query` y `page` para ganadores, perdedores y oportunidades, y explica que esas filas están limitadas y anonimizadas y no equivalen al total agregado. Analiza también países, dispositivos, indexación y sitemaps.
 - En GA4 analiza usuarios, sesiones, adquisición, landing pages, engagement, eventos y conversiones. Usa metadatos para validar dimensiones y métricas cuando sea necesario.
-- En Business Profile revisa identidad, categorías, horarios, web, estado, reseñas y rendimiento disponible. No guardes texto íntegro de reseñas ni respuestas de la API; conserva únicamente métricas, evidencia mínima y conclusiones agregadas.
+- En Business Profile revisa identidad, categorías, horarios, web, atributos, servicios, imágenes, reseñas, publicaciones y rendimiento. El contenido de Google solo puede persistirse mediante `save_business_profile_capture` en la caché privada temporal; no lo copies al snapshot, al informe Markdown ni a archivos propios.
 - Cruza las fuentes para detectar discrepancias: páginas con impresiones pero poco tráfico, tráfico sin engagement, landing pages orgánicas ausentes, consultas sin página adecuada y diferencias entre identidad local y sitio.
 - Distingue siempre datos obtenidos, inferencias y recomendaciones. Indica fecha, cobertura, ausencia de datos, cuota, umbrales o limitaciones de cada fuente.
 
@@ -36,7 +36,7 @@ Produce una auditoría SEO integral, trazable y guardada en el almacén privado 
 
 Cada ejecución es un snapshot nuevo con un identificador formado por proyecto y timestamp. Solo puede actualizarse mientras sea `draft`; una auditoría `completed` queda congelada. Consulta `get_project_history` para comparar score, incidencias y KPIs con snapshots anteriores. Nunca sobrescribas un resultado completado.
 
-Guarda un manifiesto v4 ligero y separa los datos visuales en `metrics.json` mediante `save_audit_result`: `periods`, `sourceCoverage`, KPIs numéricos, datasets tipados y especificaciones de gráfica permitidas. Usa datasets `timeseries`, `categorical` o `matrix`, fechas ISO y unidades explícitas. No introduzcas configuración ECharts arbitraria.
+Guarda un manifiesto v5 ligero y separa los datos visuales SEO, Search Console y Analytics en `metrics.json` mediante `save_audit_result`: `periods`, `sourceCoverage`, KPIs numéricos, datasets tipados y especificaciones de gráfica permitidas. Usa datasets `timeseries`, `categorical` o `matrix`, fechas ISO y unidades explícitas. No introduzcas configuración ECharts arbitraria.
 
 La persistencia v3 es por fases y cada llamada debe comprobarse antes de continuar:
 
@@ -45,7 +45,8 @@ La persistencia v3 es por fases y cada llamada debe comprobarse antes de continu
 3. Guarda inventario y diagnósticos con `save_audit_inventory`. Cada error usa código estable, etapa, fuente, alcance, si admite reintento, efecto en la completitud y próxima acción exacta.
 4. Guarda páginas con `save_audit_page_batch`, entre 1 y 25 por llamada. No superes 500 totales ni 50 profundas. Usa la URL normalizada para un identificador estable y registra descubrimiento, sitemap, plantilla, idioma, profundidad, cobertura y nivel.
 5. Para cada página profunda, ejecuta `npm run audit:deep -- --audit=<id>`; el runner captura desktop y móvil, extrae señales del DOM y actualiza la página sin guardar HTML completo. No adjuntes capturas a páginas ligeras. El progreso reanudable se conserva en `.seo-data/runs/<id>.json` y los fallos de navegador no bloquean el rastreo HTTP.
-6. Verifica el inventario con `list_audit_pages`, páginas críticas con `get_audit_page`, cambios con `get_audit_changes`, estado de etapas con `get_audit_run_status` y tamaño con `get_audit_storage`. Mantén las capturas exclusivamente en `pages/<page-id>/assets/`.
+6. Si Business Profile está disponible, consulta ficha, atributos, medios de propietario y clientes, hasta 20 reseñas, hasta 20 publicaciones y rendimiento. Llama a `save_business_profile_capture` antes de marcar el snapshot como `completed`; la herramienta enlaza la referencia v5, descarga hasta 40 miniaturas seguras y calcula una caducidad máxima de 30 días. Normaliza el rendimiento como `startDate`, `endDate` y hasta 11 `series`, cada una con `key`, `label`, `unit` y puntos `{date, value}`. No incluyas esos valores ni imágenes en `metrics.json` o `report.md`.
+7. Verifica el inventario con `list_audit_pages`, páginas críticas con `get_audit_page`, cambios con `get_audit_changes`, estado de etapas con `get_audit_run_status`, captura local con `get_business_profile_capture` y tamaño con `get_audit_storage`. Mantén las capturas de página exclusivamente en `pages/<page-id>/assets/`.
 
 No asignes una puntuación SEO arbitraria por URL. La salud de página es `crítica` si existe un P0, `con problemas` si existe un P1-P3, `correcta` si no hay incidencias con cobertura suficiente o `sin cobertura` cuando no hay evidencia verificable.
 
@@ -70,7 +71,7 @@ Genera visualizaciones que respondan a una decisión, no decoración. Las series
 2. ganadores, perdedores y oportunidades por consultas y páginas, con CTR, posición o crecimiento cuando sean comparables;
 3. distribución por dispositivo y país;
 4. adquisición, landing pages, engagement y conversiones de GA4;
-5. interacciones y evolución local de Business Profile;
+5. interacciones y evolución local de Business Profile mientras su captura temporal esté vigente;
 6. salud técnica: respuestas, indexabilidad, enlaces rotos, sitemap y rendimiento.
 
 Usa `line` o `area` para históricos, `bar`/`stacked-bar` para comparaciones, `scatter` para oportunidades, `heatmap` para estacionalidad o cruces y `donut` solo para una composición con pocas categorías. Evita mezclar magnitudes incompatibles en el mismo eje; cuando sea imprescindible, declara el eje derecho. Limita categorías a las que aportan una decisión clara. Añade anotaciones solo para cambios o incidencias verificadas.
@@ -102,7 +103,8 @@ Antes de cerrar, confirma explícitamente:
 - gráficas para todas las fuentes disponibles, sin datos inventados;
 - tablas accesibles, PNG, CSV, cobertura, metodología y limitaciones;
 - P0/P1/P2 con evidencia, impacto, solución, responsable y esfuerzo;
-- cruce entre GSC, GA4, Business Profile y rastreo cuando las conexiones lo permiten;
+- cruce entre GSC, GA4, Business Profile y rastreo cuando las conexiones y la captura temporal lo permiten;
+- referencia v5 de Business Profile enlazada antes de completar el snapshot, con caducidad, cobertura y diagnósticos verificables;
 - plan 30/60/90 vinculado a indicadores que permitan comprobar el resultado.
 - inventario técnico completo, listado de URLs y hasta 50 páginas profundas con cobertura honesta;
 - hallazgos estructurados y diagnósticos accionables, sin HTML no confiable ni secretos;

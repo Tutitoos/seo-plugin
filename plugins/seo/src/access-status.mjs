@@ -5,7 +5,7 @@ import { accountKey } from "./scoped-keychain.mjs";
 const config = {
   analytics: { label: "Google Analytics", service: "codex.google-analytics", scope: "analytics.readonly", sees: "Cuentas, propiedades, dimensiones, métricas e informes GA4" },
   searchConsole: { label: "Google Search Console", service: "codex.google-search-console", scope: "webmasters.readonly", sees: "Propiedades, rendimiento, indexación y sitemaps" },
-  businessProfile: { label: "Google Business Profile", service: "codex.google-business-profile", scope: "business.manage (herramientas de lectura)", sees: "Cuentas, fichas, reseñas y métricas; cuota API externa pendiente" },
+  businessProfile: { label: "Google Business Profile", service: "codex.google-business-profile", scope: "business.manage (herramientas de lectura)", sees: "Cuentas, fichas, imágenes, atributos, reseñas, publicaciones y métricas; caché privada máxima de 30 días" },
 };
 
 function hasKeychainItem(service, account) {

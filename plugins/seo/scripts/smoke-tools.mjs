@@ -2,10 +2,10 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
 const servers = [
-  ["seo-workspace", "./src/mcp-server.mjs", 15],
+  ["seo-workspace", "./src/mcp-server.mjs", 17],
   ["google-analytics", "./integrations/google-analytics/mcp/server.mjs", 5],
   ["google-search-console", "./integrations/google-search-console/mcp/server.mjs", 5],
-  ["google-business-profile", "./integrations/google-business-profile/mcp/server.mjs", 6],
+  ["google-business-profile", "./integrations/google-business-profile/mcp/server.mjs", 9],
 ];
 const all = [];
 for (const [name, script, count] of servers) {
@@ -18,5 +18,5 @@ for (const [name, script, count] of servers) {
     all.push(...tools);
   } finally { await client.close(); }
 }
-if (new Set(all).size !== 31) throw new Error("Hay nombres de herramientas duplicados.");
+if (new Set(all).size !== 36) throw new Error("Hay nombres de herramientas duplicados.");
 console.log(JSON.stringify({ count: all.length, tools: all }, null, 2));

@@ -1,15 +1,16 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Tutitoos/seo-plugin/schemas/audit-manifest.schema.json",
-  "title": "SEO Plugin audit manifest v1-v4",
+  "title": "SEO Plugin audit manifest v1-v5",
   "type": "object",
   "required": ["version", "id", "title", "project", "auditType", "status", "periods", "sourceCoverage", "metrics", "createdAt", "updatedAt"],
   "properties": {
-    "version": { "enum": [1, 2, 3, 4] },
+    "version": { "enum": [1, 2, 3, 4, 5] },
     "id": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
     "title": { "type": "string", "minLength": 1, "maxLength": 180 },
     "project": { "type": "object", "required": ["slug", "name"], "properties": { "slug": { "type": "string" }, "name": { "type": "string" } }, "additionalProperties": false },
     "profileId": { "type": ["string", "null"] },
+    "businessProfileCapture": { "anyOf": [{ "$ref": "#/$defs/businessProfileCapture" }, { "type": "null" }] },
     "auditType": { "type": "string" },
     "status": { "enum": ["draft", "completed", "failed"] },
     "score": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
@@ -26,6 +27,6 @@
     "updatedAt": { "type": "string", "format": "date-time" },
     "completedAt": { "type": ["string", "null"], "format": "date-time" }
   },
-  "$defs": { "period": { "type": ["object", "null"], "properties": { "startDate": { "type": "string", "format": "date" }, "endDate": { "type": "string", "format": "date" }, "granularity": { "enum": ["day", "week", "month", "snapshot", "none"] } }, "required": ["startDate", "endDate", "granularity"], "additionalProperties": false }, "contentLink": { "type": "object", "required": ["path"], "properties": { "path": { "type": "string" }, "count": { "type": "integer", "minimum": 0 }, "deepCount": { "type": "integer", "minimum": 0 }, "counts": { "type": "object" } }, "additionalProperties": true } },
+  "$defs": { "period": { "type": ["object", "null"], "properties": { "startDate": { "type": "string", "format": "date" }, "endDate": { "type": "string", "format": "date" }, "granularity": { "enum": ["day", "week", "month", "snapshot", "none"] } }, "required": ["startDate", "endDate", "granularity"], "additionalProperties": false }, "contentLink": { "type": "object", "required": ["path"], "properties": { "path": { "type": "string" }, "count": { "type": "integer", "minimum": 0 }, "deepCount": { "type": "integer", "minimum": 0 }, "counts": { "type": "object" } }, "additionalProperties": true }, "businessProfileCapture": { "type": "object", "required": ["captureId", "profileId", "accountName", "locationName", "capturedAt", "expiresAt", "status", "coverage", "diagnosticsCount", "truncated"], "properties": { "captureId": { "type": "string" }, "profileId": { "type": "string" }, "accountName": { "type": "string" }, "locationName": { "type": "string" }, "capturedAt": { "type": "string", "format": "date-time" }, "expiresAt": { "type": "string", "format": "date-time" }, "status": { "enum": ["available", "partial", "unavailable"] }, "coverage": { "type": "object" }, "diagnosticsCount": { "type": "integer", "minimum": 0 }, "truncated": { "type": "object" } }, "additionalProperties": false } },
   "additionalProperties": false
 }

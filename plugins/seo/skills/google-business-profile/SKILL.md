@@ -1,6 +1,6 @@
 ---
 name: google-business-profile
-description: Consulta cuentas, fichas, horarios, reseñas y métricas de Google Business Profile usando OAuth local. Úsala cuando el usuario pida datos de Google Business Profile, Perfil de Empresa, Google Maps local, reseñas, llamadas, clics web, solicitudes de ruta o visibilidad local.
+description: Consulta cuentas, fichas, imágenes, atributos, publicaciones, reseñas y métricas de Google Business Profile usando OAuth local. Úsala cuando el usuario pida datos de Google Business Profile, Perfil de Empresa, Google Maps local, galería, reseñas, llamadas, clics web, solicitudes de ruta o visibilidad local.
 ---
 
 # Google Business Profile
@@ -28,6 +28,7 @@ Usa las herramientas del servidor `google-business-profile` para consultar datos
 ## Lectura y análisis
 
 - Usa `get_business_profile_location` para auditar identidad, categorías, teléfonos, web, dirección, horarios, área de servicio y estado de apertura.
+- Usa `list_business_profile_media` por separado para contenido del propietario y de clientes, `get_business_profile_attributes` para atributos y `list_business_profile_posts` para actividad reciente.
 - Pagina reseñas con `nextPageToken` solo cuando el análisis necesite más resultados. Distingue texto del cliente, respuesta del propietario e inferencias.
 - Para rendimiento exige ubicación, intervalo y métricas. No confundas impresiones con usuarios únicos fuera de la definición concreta de Google.
 - Distingue datos obtenidos de la API, inferencias y recomendaciones de SEO local.
@@ -38,4 +39,5 @@ Usa las herramientas del servidor `google-business-profile` para consultar datos
 - No respondas reseñas, no edites fichas y no publiques contenido con este plugin.
 - Un `403` puede indicar falta de acceso de la cuenta a la ficha, APIs no habilitadas o proyecto todavía sin aprobación/cuota.
 - Las reseñas solo se pueden listar para ubicaciones verificadas.
-- No caches ni guardes en archivos el contenido devuelto por Google Business Profile.
+- No guardes contenido de Google en el snapshot permanente. Durante `/seo full`, usa exclusivamente `save_business_profile_capture` mientras la auditoría esté en borrador: aplica una caché privada de 30 días, límites de contenido y miniaturas optimizadas. Al caducar, crea un snapshot nuevo; nunca prolongues ni reconstruyas una captura antigua.
+- Si una descarga, cuota o recurso falla, conserva cobertura y diagnóstico sin sustituirlo por contenido simulado.

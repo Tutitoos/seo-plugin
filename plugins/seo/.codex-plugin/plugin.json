@@ -1,7 +1,7 @@
 {
   "name": "seo",
-  "version": "1.3.0+codex.20260902191109",
-  "description": "Suite SEO y marketing con 54 skills, 31 herramientas, Google multi-account, auditor\u00eda profunda y almacenamiento privado con cuota.",
+  "version": "1.4.0+codex.20260902200750",
+  "description": "Suite SEO y marketing con 54 skills, 36 herramientas, Google multi-account, auditor\u00eda profunda y almacenamiento privado con cuota.",
   "author": {
     "name": "Tutitoos",
     "url": "https://github.com/Tutitoos"
@@ -21,7 +21,7 @@
   "interface": {
     "displayName": "SEO",
     "shortDescription": "SEO, marketing y Google multi-account",
-    "longDescription": "Re\u00fane 50 Marketing Skills, una skill orquestadora SEO Full, Analytics, Search Console y Business Profile con perfiles multi-account y un dashboard local de auditor\u00edas privadas con KPIs, hallazgos, inventario, diagn\u00f3stico p\u00e1gina por p\u00e1gina y cuota de 512 MB por snapshot.",
+    "longDescription": "Re\u00fane 50 Marketing Skills, una skill orquestadora SEO Full, Analytics, Search Console y Business Profile con perfiles multi-account, capturas temporales del Perfil de empresa y un dashboard local de auditor\u00edas privadas con cuota de 512 MB por snapshot.",
     "developerName": "Tutitoos",
     "category": "Marketing",
     "capabilities": [

@@ -24,7 +24,7 @@ test("genera ids estables a partir de la URL canónica normalizada", async () =>
   assert.throws(() => pageIdForUrl("file:///etc/passwd"), /HTTP/);
 });
 
-test("guarda hallazgos, inventario y páginas filtrables en un snapshot v4", async () => {
+test("guarda hallazgos, inventario y páginas filtrables sin degradar un snapshot v5", async () => {
   const { detail } = await setup("save-");
   const savedFindings = await detail.saveFindings("demo-audit", [finding]);
   await detail.saveInventory("demo-audit", { sitemaps: [{ url: "https://example.com/sitemap.xml", status: 200 }], robots: { status: 200 } }, [{ code: "ga4-unavailable", source: "google-analytics", message: "OAuth pendiente.", completenessImpact: "No hay tráfico ni conversiones.", nextAction: "Conectar GA4 y repetir la fase de datos.", retryable: true }]);
@@ -36,7 +36,7 @@ test("guarda hallazgos, inventario y páginas filtrables en un snapshot v4", asy
   assert.equal(page.page.response.status, 500);
   assert.equal(page.findings[0].workflow.status, "pending");
   const manifest = JSON.parse(await readFile(join(process.env.SEO_PLUGIN_DATA_DIR, "audits", "demo-audit", "manifest.json")));
-  assert.equal(manifest.version, 4);
+  assert.equal(manifest.version, 5);
   assert.equal(manifest.content.pages.deepCount, 1);
   assert.equal(manifest.content.findings.count, 1);
 });

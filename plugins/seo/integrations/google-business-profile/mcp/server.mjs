@@ -59,6 +59,7 @@ function failure(error) {
   return {
     isError: true,
     content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }],
+    structuredContent: { error: { code: error?.code || "business-profile-error", message: error instanceof Error ? error.message : String(error), status: error?.status || null, retryable: Boolean(error?.retryable), nextAction: error?.nextAction || null } },
   };
 }
 
@@ -187,6 +188,60 @@ server.registerTool(
       reviews: data.reviews || [],
       nextPageToken: data.nextPageToken || null,
     };
+  }),
+);
+
+server.registerTool(
+  "list_business_profile_media",
+  {
+    title: "Listar imágenes de Business Profile",
+    description: "Lista imágenes del propietario o aportadas por clientes. Devuelve URLs temporales de Google; no modifica la galería.",
+    inputSchema: {
+      profileId: z.string().optional(), accountName: z.string().regex(/^accounts\/\d+$/, "Usa accounts/{id}.").optional(), locationName: locationNameSchema.optional(),
+      source: z.enum(["owner", "customer"]).optional().default("owner"), pageSize: z.number().int().min(1).max(100).optional().default(100), pageToken: z.string().min(1).optional(),
+    },
+    annotations: readOnly,
+  },
+  ({ profileId, accountName, locationName, source, pageSize, pageToken }) => safely(async () => {
+    const ctx = await context(profileId);
+    accountName ||= ctx.service.accountName; locationName ||= ctx.service.locationName;
+    if (!accountName || !locationName) throw new Error(`El perfil ${ctx.profile.id} necesita accountName y locationName.`);
+    const data = await ctx.google.listMedia({ accountName, locationName, source, pageSize, pageToken });
+    return { profileId: ctx.profile.id, accountName, locationName, source, mediaItems: data.mediaItems || [], nextPageToken: data.nextPageToken || null, totalMediaItemCount: data.totalMediaItemCount ?? null };
+  }),
+);
+
+server.registerTool(
+  "list_business_profile_posts",
+  {
+    title: "Listar publicaciones de Business Profile",
+    description: "Lista publicaciones recientes de una ubicación con su estado, CTA, fechas y medios. No crea ni edita publicaciones.",
+    inputSchema: { profileId: z.string().optional(), accountName: z.string().regex(/^accounts\/\d+$/, "Usa accounts/{id}.").optional(), locationName: locationNameSchema.optional(), pageSize: z.number().int().min(1).max(100).optional().default(20), pageToken: z.string().min(1).optional() },
+    annotations: readOnly,
+  },
+  ({ profileId, accountName, locationName, pageSize, pageToken }) => safely(async () => {
+    const ctx = await context(profileId);
+    accountName ||= ctx.service.accountName; locationName ||= ctx.service.locationName;
+    if (!accountName || !locationName) throw new Error(`El perfil ${ctx.profile.id} necesita accountName y locationName.`);
+    const data = await ctx.google.listLocalPosts({ accountName, locationName, pageSize, pageToken });
+    return { profileId: ctx.profile.id, accountName, locationName, localPosts: data.localPosts || [], nextPageToken: data.nextPageToken || null };
+  }),
+);
+
+server.registerTool(
+  "get_business_profile_attributes",
+  {
+    title: "Consultar atributos de Business Profile",
+    description: "Devuelve los atributos declarados por una ubicación, como accesibilidad, pagos o servicios disponibles.",
+    inputSchema: { profileId: z.string().optional(), locationName: locationNameSchema.optional() },
+    annotations: readOnly,
+  },
+  ({ profileId, locationName }) => safely(async () => {
+    const ctx = await context(profileId);
+    locationName ||= ctx.service.locationName;
+    if (!locationName) throw new Error(`El perfil ${ctx.profile.id} no tiene locationName predeterminado.`);
+    const data = await ctx.google.getAttributes({ locationName });
+    return { profileId: ctx.profile.id, locationName, attributes: data.attributes || [] };
   }),
 );
 

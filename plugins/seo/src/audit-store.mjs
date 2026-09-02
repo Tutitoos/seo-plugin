@@ -4,6 +4,7 @@ import { ensureDataRoot, insideDataRoot, safeId } from "./data-root.mjs";
 import { readJson } from "./json-file.mjs";
 import { ProjectSettingsStore } from "./project-settings-store.mjs";
 import { writeAuditFilesAtomic } from "./audit-storage.mjs";
+import { normalizeBusinessProfileReference } from "./business-profile-capture-store.mjs";
 
 const STATUSES = new Set(["draft", "completed", "failed"]);
 const KPI_POLICIES = new Set(["higher-is-better", "lower-is-better", "informational"]);
@@ -240,13 +241,14 @@ export class AuditStore {
     if (score !== null && (!Number.isFinite(score) || score < 0 || score > 100)) throw new Error("score debe estar entre 0 y 100.");
     const now = this.now();
     const manifest = {
-      version: 4, id, title: text(input.title || previous.title, "title", 180, true), project,
+      version: 5, id, title: text(input.title || previous.title, "title", 180, true), project,
       profileId: input.profileId ? safeId(input.profileId, "profileId") : previous.profileId || null,
       auditType: safeId(input.auditType || previous.auditType || "seo-full", "auditType"), status, score,
       summary: text(input.summary ?? previous.summary, "summary", 500),
       executive: normalizeExecutive(input.executive, previous.executive),
       periods: { primary: period(input.periods?.primary, "periods.primary") || previous.periods?.primary || null, comparison: period(input.periods?.comparison, "periods.comparison") || previous.periods?.comparison || null, history: period(input.periods?.history, "periods.history") || previous.periods?.history || null },
       sourceCoverage: normalizeCoverage(input.sourceCoverage, previous.sourceCoverage || []),
+      businessProfileCapture: input.businessProfileCapture === undefined ? (previous.businessProfileCapture || null) : normalizeBusinessProfileReference(input.businessProfileCapture),
       skillsUsed: [...new Set(input.skillsUsed || previous.skillsUsed || [])].map((item) => safeId(item, "skill")),
       tags: [...new Set(input.tags || previous.tags || [])].map((item) => text(item, "tag", 60)).filter(Boolean), artifacts: previous.artifacts || [], content: previous.content || {},
       metrics: { path: "metrics.json", kpiCount: metrics.kpis.length, datasetCount: metrics.datasets.length, chartCount: metrics.charts.length },
@@ -260,7 +262,7 @@ export class AuditStore {
       files.push({ relativePath: "report.md", bytes: input.reportMarkdown });
     }
     await writeAuditFilesAtomic(id, files);
-    return { ...manifest, ...metrics };
+    return { ...manifest, ...metrics, version: manifest.version, metricsVersion: metrics.version };
   }
 
   async list(filters = {}) {
@@ -295,6 +297,19 @@ export class AuditStore {
     let reportMarkdown = "";
     try { reportMarkdown = await readFile(insideDataRoot("audits", id, "report.md"), "utf8"); } catch (error) { if (error?.code !== "ENOENT") throw error; }
     return { manifest, metrics, reportMarkdown };
+  }
+
+  async attachBusinessProfileCapture(id, reference) {
+    id = safeId(id, "auditId");
+    const manifestPath = insideDataRoot("audits", id, "manifest.json");
+    const manifest = await readJson(manifestPath, null);
+    if (!manifest) throw new Error(`No existe la auditoría ${id}.`);
+    if (manifest.status === "completed") throw new Error(`La auditoría ${id} está completada y es inmutable. Crea un nuevo snapshot.`);
+    const normalized = normalizeBusinessProfileReference(reference);
+    if (manifest.profileId && manifest.profileId !== normalized.profileId) throw new Error("La captura de Business Profile pertenece a otro perfil.");
+    const next = { ...manifest, version: 5, profileId: manifest.profileId || normalized.profileId, businessProfileCapture: normalized, updatedAt: this.now() };
+    await writeAuditFilesAtomic(id, [{ relativePath: "manifest.json", value: next }]);
+    return next;
   }
 
   async projectHistory(projectId) {

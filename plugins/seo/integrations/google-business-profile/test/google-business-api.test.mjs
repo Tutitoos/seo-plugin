@@ -85,6 +85,32 @@ test("construye la ruta v4 de reseñas", async () => {
   assert.equal(captured.searchParams.get("pageSize"), "50");
 });
 
+test("construye rutas de medios del propietario y clientes", async () => {
+  const paths = [];
+  const client = new GoogleBusinessProfileClient({
+    oauth: { async getAccessToken() { return "token"; } },
+    fetchImpl: async (url) => { paths.push(new URL(url)); return jsonResponse({ mediaItems: [] }); },
+  });
+  await client.listMedia({ accountName: "accounts/123", locationName: "locations/456", source: "owner", pageSize: 40 });
+  await client.listMedia({ accountName: "accounts/123", locationName: "locations/456", source: "customer", pageToken: "next" });
+  assert.equal(paths[0].pathname, "/v4/accounts/123/locations/456/media");
+  assert.equal(paths[0].searchParams.get("pageSize"), "40");
+  assert.equal(paths[1].pathname, "/v4/accounts/123/locations/456/customerMedia");
+  assert.equal(paths[1].searchParams.get("pageToken"), "next");
+});
+
+test("construye rutas de publicaciones y atributos", async () => {
+  const paths = [];
+  const client = new GoogleBusinessProfileClient({
+    oauth: { async getAccessToken() { return "token"; } },
+    fetchImpl: async (url) => { paths.push(new URL(url)); return jsonResponse({}); },
+  });
+  await client.listLocalPosts({ accountName: "accounts/123", locationName: "locations/456", pageSize: 20 });
+  await client.getAttributes({ locationName: "locations/456" });
+  assert.equal(paths[0].pathname, "/v4/accounts/123/locations/456/localPosts");
+  assert.equal(paths[1].pathname, "/v1/locations/456/attributes");
+});
+
 test("construye el intervalo y métricas de Performance API", async () => {
   let captured;
   const client = new GoogleBusinessProfileClient({

@@ -190,7 +190,7 @@ export class AuditDetailStore {
   async updateContent(auditId, partial) {
     const manifest = await this.manifest(auditId);
     const content = { ...(manifest.content || {}), ...partial };
-    await writeAuditJsonAtomic(manifest.id, "manifest.json", { ...manifest, version: 4, content, updatedAt: this.now() });
+    await writeAuditJsonAtomic(manifest.id, "manifest.json", { ...manifest, version: Math.max(manifest.version || 1, 4), content, updatedAt: this.now() });
   }
 
   async saveFindings(auditId, input) {
@@ -199,7 +199,7 @@ export class AuditDetailStore {
     const findings = input.map(normalizeFinding);
     if (new Set(findings.map((item) => item.fingerprint)).size !== findings.length) throw new Error("findings contiene incidencias duplicadas.");
     const payload = { version: 4, updatedAt: this.now(), counts: issueCounts(findings), findings };
-    const nextManifest = { ...manifest, version: 4, content: { ...(manifest.content || {}), findings: { path: "findings.json", count: findings.length, counts: payload.counts } }, updatedAt: this.now() };
+    const nextManifest = { ...manifest, version: Math.max(manifest.version || 1, 4), content: { ...(manifest.content || {}), findings: { path: "findings.json", count: findings.length, counts: payload.counts } }, updatedAt: this.now() };
     await writeAuditFilesAtomic(manifest.id, [{ relativePath: "findings.json", value: payload }, { relativePath: "manifest.json", value: nextManifest }]);
     await this.reconcileIssues(manifest, findings);
     return payload;
@@ -209,7 +209,7 @@ export class AuditDetailStore {
     const manifest = await this.writable(auditId);
     const payload = { version: 4, updatedAt: this.now(), ...compactObject(inventory || {}, "inventory") };
     const diagnosticList = diagnostics === undefined ? await readJson(insideDataRoot("audits", manifest.id, "diagnostics.json"), { version: 4, diagnostics: [] }) : { version: 4, updatedAt: this.now(), diagnostics: boundedArray(diagnostics, "diagnostics", 500, normalizeDiagnostic) };
-    const nextManifest = { ...manifest, version: 4, content: { ...(manifest.content || {}), inventory: { path: "inventory.json" }, diagnostics: { path: "diagnostics.json", count: diagnosticList.diagnostics?.length || 0 } }, updatedAt: this.now() };
+    const nextManifest = { ...manifest, version: Math.max(manifest.version || 1, 4), content: { ...(manifest.content || {}), inventory: { path: "inventory.json" }, diagnostics: { path: "diagnostics.json", count: diagnosticList.diagnostics?.length || 0 } }, updatedAt: this.now() };
     const files = [{ relativePath: "inventory.json", value: payload }, { relativePath: "manifest.json", value: nextManifest }];
     if (diagnostics !== undefined) files.splice(1, 0, { relativePath: "diagnostics.json", value: diagnosticList });
     await writeAuditFilesAtomic(manifest.id, files);
@@ -229,7 +229,7 @@ export class AuditDetailStore {
     if (all.length > 500) throw new Error("La auditoría supera el límite de 500 páginas.");
     if (all.filter((page) => page.auditLevel === "deep").length > 50) throw new Error("La auditoría supera el límite de 50 páginas profundas.");
     const payload = { version: 4, updatedAt: this.now(), pages: all };
-    const nextManifest = { ...manifest, version: 4, content: { ...(manifest.content || {}), pages: { path: "pages/index.json", count: all.length, deepCount: all.filter((page) => page.auditLevel === "deep").length } }, updatedAt: this.now() };
+    const nextManifest = { ...manifest, version: Math.max(manifest.version || 1, 4), content: { ...(manifest.content || {}), pages: { path: "pages/index.json", count: all.length, deepCount: all.filter((page) => page.auditLevel === "deep").length } }, updatedAt: this.now() };
     const files = [];
     for (const page of pages) {
       const { metrics, ...pagePayload } = page;

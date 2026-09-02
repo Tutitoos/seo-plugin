@@ -3,19 +3,21 @@
 import FindingsPanel from "./FindingsPanel.astro";
 import InventoryPanel from "./InventoryPanel.astro";
 import PageTable from "./PageTable.astro";
+import BusinessProfilePanel from "./BusinessProfilePanel.astro";
 type AnyItem = Record<string, any>;
-const { auditId, projectId, metrics, coverage = [], history = [], executive = {}, findings = [], pagesResult = { pages: [], total: 0 }, inventory = {}, diagnostics = [], changes = null, csrfToken = "", returnTo = "", mode = "audit" } = Astro.props as AnyItem;
+const { auditId, projectId, metrics, coverage = [], history = [], executive = {}, findings = [], pagesResult = { pages: [], total: 0 }, inventory = {}, diagnostics = [], changes = null, businessProfile = null, csrfToken = "", returnTo = "", mode = "audit" } = Astro.props as AnyItem;
 const kpis: AnyItem[] = metrics?.kpis || [];
 const datasets: AnyItem[] = metrics?.datasets || [];
 const charts: AnyItem[] = metrics?.charts || [];
 const auditSections = [
   ["summary", "Resumen"], ["changes", "Cambios"], ["findings", "Hallazgos"], ["pages", "Páginas"], ["visibility", "Visibilidad"], ["traffic", "Tráfico"],
-  ["local", "Local"], ["technical", "Técnico"], ["content", "Contenido"], ["inventory", "Inventario"],
+  ["business-profile", "Perfil de empresa"], ["technical", "Técnico"], ["content", "Contenido"], ["inventory", "Inventario"],
 ];
 const sections = mode === "page" ? [["summary", "Resumen"], ["visibility", "Search Console"], ["traffic", "Analytics"], ["technical", "Rendimiento"]] : auditSections;
-const chartSections = new Set(["visibility", "traffic", "local", "technical", "content"]);
+const chartSections = new Set(["visibility", "traffic", "business-profile", "technical", "content"]);
 const datasetFor = (chart: AnyItem) => datasets.find((dataset) => dataset.id === chart.datasetId);
-const chartsFor = (section: string) => charts.filter((chart) => chart.section === section);
+const metricSection = (section: string) => section === "business-profile" ? "local" : section;
+const chartsFor = (section: string) => charts.filter((chart) => chart.section === metricSection(section));
 const palette: Record<string, string> = { lime: "var(--lime)", blue: "var(--blue)", orange: "var(--orange)", green: "var(--green)", red: "var(--red)", ink: "var(--ink)" };
 const categoryColors = ["lime", "blue", "orange", "green", "red", "ink"];
 const sparkline = (kpi: AnyItem) => {
@@ -45,7 +47,7 @@ const donutStyle = (dataset: AnyItem, key: string) => {
 };
 ---
 
-{(kpis.length > 0 || charts.length > 0 || coverage.length > 0) && <section class="audit-explorer" aria-label="Panel de datos de la auditoría">
+{(kpis.length > 0 || charts.length > 0 || coverage.length > 0 || businessProfile) && <section class="audit-explorer" aria-label="Panel de datos de la auditoría">
   <div class="audit-controls">
     <nav class="audit-tabs" aria-label="Secciones de la auditoría">
       {sections.map(([id, label], index) => <button type="button" role="tab" aria-selected={index === 0 ? "true" : "false"} data-tab={id}>{label}</button>)}
@@ -80,6 +82,7 @@ const donutStyle = (dataset: AnyItem, key: string) => {
     {section === "changes" && <><div class="section-head"><div><p class="eyebrow">Comparativa con el snapshot anterior</p><h2>Qué ha cambiado</h2></div><span class="muted">{changes?.comparable ? `${changes.counts.changedPages} páginas con cambios` : "Sin comparativa"}</span></div>{changes?.comparable ? <><div class="change-summary"><article><strong>{changes.findingChanges.new.length}</strong><span>hallazgos nuevos</span></article><article><strong>{changes.findingChanges.resolved.length}</strong><span>hallazgos resueltos</span></article><article><strong>{changes.findingChanges.reopened.length}</strong><span>reabiertos</span></article><article><strong>{changes.findingChanges.persistent.length}</strong><span>persistentes</span></article></div>{changes.metricChanges?.length > 0 && <div class="table-scroll change-metrics"><table><caption>Evolución de KPIs</caption><thead><tr><th>KPI</th><th>Estado</th><th>Anterior</th><th>Actual</th><th>Delta</th></tr></thead><tbody>{changes.metricChanges.map((metric) => <tr><th>{metric.label || metric.id}</th><td>{metric.status}</td><td>{metric.previous ?? "—"}</td><td>{metric.current ?? "—"}</td><td>{metric.delta ?? "—"}</td></tr>)}</tbody></table></div>}<div class="change-list">{changes.pageChanges.map((change) => <article class={`change-card change-${changeClass(change.status)}`}><header><span class="pill">{changeLabel(change.status)}</span><code>{change.url}</code></header>{change.fields?.length > 0 ? <ul>{change.fields.map((field) => <li><strong>{field.field}</strong><span>{field.previous ?? "—"} → {field.current ?? "—"}</span></li>)}</ul> : <p class="muted">{change.status === "nuevo" ? "URL incorporada a la cobertura." : change.status === "resuelto" ? "URL retirada de la cobertura." : "No se modificaron señales verificadas."}</p>}</article>)}</div>{changes.pageChanges.length === 0 && <div class="panel tab-empty"><strong>No se han detectado cambios de página.</strong><p>La estructura y las señales auditadas coinciden con el snapshot anterior.</p></div>}</> : <div class="panel tab-empty"><strong>Todavía no existe un snapshot anterior comparable.</strong><p>Ejecuta otra auditoría del mismo proyecto para activar esta vista.</p></div>}</>}
     {section === "pages" && <><div class="section-head"><div><p class="eyebrow">Inventario rastreado</p><h2>Páginas</h2></div><span class="muted">{pagesResult.total} URLs</span></div><PageTable auditId={auditId} pages={pagesResult.pages.slice(0, 20)} total={pagesResult.total} compact={true} /></>}
     {section === "inventory" && <><div class="section-head"><div><p class="eyebrow">Superficie técnica pública</p><h2>Inventario</h2></div></div><InventoryPanel inventory={inventory} diagnostics={diagnostics} /></>}
+    {section === "business-profile" && <BusinessProfilePanel auditId={auditId} state={businessProfile} sourceCoverage={coverage.find((source) => source.id === "business-profile")} />}
 
     {chartSections.has(section) && chartsFor(section).length > 0 && <div class="section-head"><div><p class="eyebrow">Datos y decisiones</p><h2>{label}</h2></div><span class="muted">{chartsFor(section).length} gráficas</span></div>}
     <div class="chart-grid">
@@ -92,7 +95,7 @@ const donutStyle = (dataset: AnyItem, key: string) => {
           {chart.engine === "echarts" ? <>
             <div class="advanced-chart" data-chart-id={chart.id}></div>
           </> : chart.type === "donut" ? <div class="native-donut"><div class="native-donut-ring" style={donutStyle(dataset, chart.seriesKeys[0])}><i></i></div><div class="native-donut-list">{(dataset?.rows as AnyItem[])?.map((row: AnyItem, index: number) => <div><i style={`background:${palette[categoryColors[index % categoryColors.length]]}`}></i><span>{row.label}</span><strong>{row.values[chart.seriesKeys[0]] ?? "—"}</strong></div>)}</div></div> : <div class="native-bars">{(dataset?.rows as AnyItem[])?.map((row: AnyItem) => <div><span>{row.label}</span>{(chart.seriesKeys as string[]).map((key: string) => { const series = (dataset.series as AnyItem[]).find((item: AnyItem) => item.key === key); const max = Math.max(...(dataset.rows as AnyItem[]).map((item: AnyItem) => item.values[key] || 0), 1); return <div class="native-bar"><i style={`width:${Math.max(2, (row.values[key] || 0) / max * 100)}%;background:${palette[series?.color || "ink"]}`}></i><strong>{row.values[key] ?? "—"}</strong></div>})}</div>)}</div>}
-          <div class="chart-actions"><button type="button" data-export-png={chart.id}>PNG</button><a href={`/api/audits/${auditId}/charts/${chart.id}.csv`}>CSV</a></div>
+          <div class="chart-actions"><button type="button" data-export-png={chart.id}>PNG</button><a href={chart.csvPath || `/api/audits/${auditId}/charts/${chart.id}.csv`}>CSV</a></div>
           <details class="chart-data"><summary>Ver datos accesibles</summary><div class="table-scroll"><table><thead><tr><th>{dataset?.type === "timeseries" ? "Fecha" : "Dato"}</th>{(dataset?.series as AnyItem[])?.map((series: AnyItem) => <th>{series.label}</th>)}</tr></thead><tbody>{dataset?.type !== "matrix" && (dataset?.rows as AnyItem[])?.map((row: AnyItem) => <tr><th>{row.date || row.label}</th>{(dataset.series as AnyItem[]).map((series: AnyItem) => <td>{row.values[series.key] ?? "—"}</td>)}</tr>)}</tbody></table></div></details>
         </article>;
       })}
@@ -204,8 +207,12 @@ const donutStyle = (dataset: AnyItem, key: string) => {
     currentRange = button.dataset.range || "90d"; document.querySelectorAll<HTMLButtonElement>("[data-range]").forEach((item) => item.setAttribute("aria-pressed", String(item === button)));
     const url = new URL(location.href); url.searchParams.set("range", currentRange); history.replaceState({}, "", url); renderCharts();
   }));
-  const requestedTab = new URL(location.href).searchParams.get("view");
-  if (requestedTab) document.querySelector(`[data-tab="${CSS.escape(requestedTab)}"]`)?.click();
+  const requestedTab = new URL(location.href).searchParams.get("view") === "local" ? "business-profile" : new URL(location.href).searchParams.get("view");
+  if (requestedTab) {
+    const requestedButton = document.querySelector<HTMLButtonElement>(`[data-tab="${CSS.escape(requestedTab)}"]`);
+    requestedButton?.click();
+    requestedButton?.scrollIntoView({ inline: "center", block: "nearest" });
+  }
   document.querySelectorAll<HTMLButtonElement>("[data-range]").forEach((item) => item.setAttribute("aria-pressed", String(item.dataset.range === currentRange)));
   renderCharts();
   new ResizeObserver(() => instances.forEach((instance) => instance.resize())).observe(document.querySelector(".audit-explorer") || document.body);

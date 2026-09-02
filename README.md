@@ -12,7 +12,9 @@ Abre una tarea nueva y ejecuta:
 
 La skill `seo` coordina el análisis técnico, las skills especializadas, Search Console, Analytics y Business Profile, y guarda el informe en el dashboard privado. El modo completo captura 90 días diarios frente a los 90 anteriores, hasta 12 meses de tendencia, KPIs comparativos, snapshots, gráficas por fuente disponible, tablas accesibles, PNG/CSV y un plan medible. Rastrea hasta 500 URLs y selecciona hasta 50 páginas para diagnóstico profundo, capturas y cruces de datos. También puede invocarse como `$seo full`.
 
-Los snapshots v4 guardan diferencias por URL, idiomas esperados/declarados, cobertura de evidencia (HTTP, DOM, capturas, Lighthouse, CrUX y Google), inventario técnico y estado reanudable en `.seo-data/runs/`. Chrome/Chromium se ejecuta en un perfil efímero; si no está disponible, el rastreo HTTP continúa y se registra la limitación. Las nuevas herramientas `get_audit_run_status`, `get_audit_changes` y `get_audit_storage` permiten consultar progreso, evolución y cuota.
+El detalle de auditoría incluye una pestaña **Perfil de empresa** con vista de ficha, galería, servicios, atributos, reseñas, publicaciones y rendimiento local. Por política de Google, ese contenido se conserva en una caché privada separada durante un máximo de 30 días y nunca se publica en GitHub.
+
+Los snapshots v5 guardan diferencias por URL, idiomas esperados/declarados, cobertura de evidencia (HTTP, DOM, capturas, Lighthouse, CrUX y Google), inventario técnico y estado reanudable en `.seo-data/runs/`. La referencia de Business Profile apunta a una caché temporal privada, nunca al contenido persistente. Chrome/Chromium se ejecuta en un perfil efímero; si no está disponible, el rastreo HTTP continúa y se registra la limitación.
 
 ## Instalación local
 

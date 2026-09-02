@@ -22,12 +22,12 @@ async function responseData(response) {
 function apiError(status, data) {
   const detail = data?.error?.message || data?.message || `HTTP ${status}`;
   if (status === 403) {
-    return new Error(`Google denegó el acceso. Comprueba que la cuenta conectada gestione la ficha, que el proyecto tenga aprobadas y habilitadas las APIs de Business Profile y que su cuota no sea 0: ${detail}`);
+    return Object.assign(new Error(`Google denegó el acceso. Comprueba que la cuenta conectada gestione la ficha, que el proyecto tenga aprobadas y habilitadas las APIs de Business Profile y que su cuota no sea 0: ${detail}`), { code: "business-profile-access-denied", status, retryable: false, nextAction: "Verifica propietario, APIs aprobadas y cuota superior a cero en Google Cloud." });
   }
-  if (status === 404) return new Error(`Google no encontró la cuenta o ubicación solicitada: ${detail}`);
-  if (status === 429) return new Error(`Se agotó temporalmente la cuota de Google Business Profile: ${detail}`);
-  if (status >= 500) return new Error(`Google Business Profile no está disponible temporalmente: ${detail}`);
-  return new Error(`Google Business Profile devolvió un error (${status}): ${detail}`);
+  if (status === 404) return Object.assign(new Error(`Google no encontró la cuenta o ubicación solicitada: ${detail}`), { code: "business-profile-resource-not-found", status, retryable: false, nextAction: "Vuelve a listar cuentas y ubicaciones y actualiza el perfil seleccionado." });
+  if (status === 429) return Object.assign(new Error(`Se agotó temporalmente la cuota de Google Business Profile: ${detail}`), { code: "business-profile-quota-exhausted", status, retryable: true, nextAction: "Espera al restablecimiento de cuota y reanuda la auditoría." });
+  if (status >= 500) return Object.assign(new Error(`Google Business Profile no está disponible temporalmente: ${detail}`), { code: "business-profile-temporarily-unavailable", status, retryable: true, nextAction: "Reintenta esta fase sin bloquear el resto de la auditoría." });
+  return Object.assign(new Error(`Google Business Profile devolvió un error (${status}): ${detail}`), { code: "business-profile-request-failed", status, retryable: false, nextAction: "Revisa la petición y la cobertura del recurso antes de reintentar." });
 }
 
 export class GoogleBusinessProfileClient {
@@ -93,6 +93,26 @@ export class GoogleBusinessProfileClient {
     url.searchParams.set("pageSize", String(pageSize));
     url.searchParams.set("orderBy", orderBy);
     if (pageToken) url.searchParams.set("pageToken", pageToken);
+    return this.request(url.toString());
+  }
+
+  listMedia({ accountName, locationName, source = "owner", pageSize = 100, pageToken }) {
+    const collection = source === "customer" ? "customerMedia" : "media";
+    const url = new URL(`https://mybusiness.googleapis.com/v4/${accountName}/${locationName}/${collection}`);
+    url.searchParams.set("pageSize", String(pageSize));
+    if (pageToken) url.searchParams.set("pageToken", pageToken);
+    return this.request(url.toString());
+  }
+
+  listLocalPosts({ accountName, locationName, pageSize = 20, pageToken }) {
+    const url = new URL(`https://mybusiness.googleapis.com/v4/${accountName}/${locationName}/localPosts`);
+    url.searchParams.set("pageSize", String(pageSize));
+    if (pageToken) url.searchParams.set("pageToken", pageToken);
+    return this.request(url.toString());
+  }
+
+  getAttributes({ locationName }) {
+    const url = new URL(`https://mybusinessbusinessinformation.googleapis.com/v1/${locationName}/attributes`);
     return this.request(url.toString());
   }
 
