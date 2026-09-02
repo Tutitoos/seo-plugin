@@ -2,6 +2,16 @@
 
 Plugin público para Codex que reúne 50 Marketing Skills y tres integraciones Google de solo lectura: Analytics, Search Console y Business Profile. Incluye perfiles multi-account y un dashboard Astro local para consultar auditorías privadas.
 
+## Uso rápido
+
+Abre una tarea nueva y ejecuta:
+
+```text
+/seo full https://example.com proyecto=MiProyecto profileId=mi-perfil
+```
+
+La skill `seo` coordina el análisis técnico, las skills especializadas, Search Console, Analytics y Business Profile, y guarda el informe en el dashboard privado. El modo completo captura 90 días diarios frente a los 90 anteriores, hasta 12 meses de tendencia, KPIs comparativos, snapshots, gráficas por fuente disponible, tablas accesibles, PNG/CSV y un plan medible. También puede invocarse como `$seo full`.
+
 ## Instalación local
 
 ```bash

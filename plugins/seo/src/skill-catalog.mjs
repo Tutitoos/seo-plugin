@@ -17,7 +17,7 @@ function frontmatter(text) {
 
 function category(name) {
   if (name.startsWith("google-")) return "Google";
-  if (["seo-audit", "ai-seo", "programmatic-seo", "site-architecture", "schema", "aso"].includes(name)) return "SEO y descubrimiento";
+  if (["seo", "seo-audit", "ai-seo", "programmatic-seo", "site-architecture", "schema", "aso"].includes(name)) return "SEO y descubrimiento";
   if (["analytics", "attribution", "ab-testing"].includes(name)) return "Medición";
   if (["copywriting", "copy-editing", "content-strategy", "emails", "social", "video", "image", "sms", "cold-email"].includes(name)) return "Contenido";
   if (["cro", "signup", "onboarding", "popups", "paywalls"].includes(name)) return "Conversión";
@@ -37,7 +37,7 @@ export async function skillCatalog() {
         name: meta.name || entry.name,
         description: meta.description || "Sin descripción.",
         category: category(entry.name),
-        source: entry.name.startsWith("google-") ? "SEO Plugin" : "Marketing Skills",
+        source: entry.name.startsWith("google-") || entry.name === "seo" ? "SEO Plugin" : "Marketing Skills",
         access: entry.name.startsWith("google-") ? "API Google de solo lectura" : "No concede permisos; usa las herramientas disponibles en la tarea",
       });
     } catch {}

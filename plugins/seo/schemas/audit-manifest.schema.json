@@ -1,28 +1,29 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Tutitoos/seo-plugin/schemas/audit-manifest.schema.json",
-  "title": "SEO Plugin audit manifest",
+  "title": "SEO Plugin audit manifest v2",
   "type": "object",
-  "required": ["version", "id", "title", "project", "auditType", "status", "createdAt", "updatedAt"],
+  "required": ["version", "id", "title", "project", "auditType", "status", "periods", "sourceCoverage", "metrics", "createdAt", "updatedAt"],
   "properties": {
-    "version": { "const": 1 },
+    "version": { "const": 2 },
     "id": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
-    "title": { "type": "string", "minLength": 1 },
-    "project": {
-      "type": "object",
-      "required": ["slug", "name"],
-      "properties": { "slug": { "type": "string" }, "name": { "type": "string" } },
-      "additionalProperties": false
-    },
+    "title": { "type": "string", "minLength": 1, "maxLength": 180 },
+    "project": { "type": "object", "required": ["slug", "name"], "properties": { "slug": { "type": "string" }, "name": { "type": "string" } }, "additionalProperties": false },
     "profileId": { "type": ["string", "null"] },
     "auditType": { "type": "string" },
     "status": { "enum": ["draft", "completed", "failed"] },
     "score": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
-    "summary": { "type": "string" },
+    "summary": { "type": "string", "maxLength": 500 },
+    "periods": { "type": "object", "properties": { "primary": { "$ref": "#/$defs/period" }, "comparison": { "$ref": "#/$defs/period" }, "history": { "$ref": "#/$defs/period" } } },
+    "sourceCoverage": { "type": "array", "maxItems": 20, "items": { "type": "object", "required": ["id", "label", "status", "detail", "updatedAt"], "properties": { "id": { "type": "string" }, "label": { "type": "string" }, "status": { "enum": ["available", "partial", "unavailable"] }, "detail": { "type": "string" }, "updatedAt": { "type": ["string", "null"] } }, "additionalProperties": false } },
     "skillsUsed": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
     "tags": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
     "artifacts": { "type": "array" },
+    "metrics": { "type": "object", "required": ["path", "kpiCount", "datasetCount", "chartCount"], "properties": { "path": { "const": "metrics.json" }, "kpiCount": { "type": "integer", "minimum": 0 }, "datasetCount": { "type": "integer", "minimum": 0 }, "chartCount": { "type": "integer", "minimum": 0 } }, "additionalProperties": false },
     "createdAt": { "type": "string", "format": "date-time" },
-    "updatedAt": { "type": "string", "format": "date-time" }
-  }
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "completedAt": { "type": ["string", "null"], "format": "date-time" }
+  },
+  "$defs": { "period": { "type": ["object", "null"], "properties": { "startDate": { "type": "string", "format": "date" }, "endDate": { "type": "string", "format": "date" }, "granularity": { "enum": ["day", "week", "month", "snapshot", "none"] } }, "required": ["startDate", "endDate", "granularity"], "additionalProperties": false } },
+  "additionalProperties": false
 }

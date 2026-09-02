@@ -1,7 +1,7 @@
 {
   "name": "seo",
-  "version": "1.0.0+codex.20260902145639",
-  "description": "Suite SEO y marketing con 53 skills, Google multi-account y auditor\u00edas privadas.",
+  "version": "1.1.0+codex.20260902164602",
+  "description": "Suite SEO y marketing con 54 skills, Google multi-account y auditor\u00edas privadas con KPIs y gr\u00e1ficas.",
   "author": {
     "name": "Tutitoos",
     "url": "https://github.com/Tutitoos"
@@ -21,7 +21,7 @@
   "interface": {
     "displayName": "SEO",
     "shortDescription": "SEO, marketing y Google multi-account",
-    "longDescription": "Re\u00fane 50 Marketing Skills, Analytics, Search Console y Business Profile con perfiles multi-account y un dashboard local de auditor\u00edas privadas.",
+    "longDescription": "Re\u00fane 50 Marketing Skills, una skill orquestadora SEO Full, Analytics, Search Console y Business Profile con perfiles multi-account y un dashboard local de auditor\u00edas privadas con KPIs y gr\u00e1ficas.",
     "developerName": "Tutitoos",
     "category": "Marketing",
     "capabilities": [
@@ -30,6 +30,7 @@
       "Local Write"
     ],
     "defaultPrompt": [
+      "/seo full para una auditor\u00eda integral con datos Google",
       "Audita el SEO de mi proyecto y guarda el resultado",
       "Analiza Analytics y Search Console para mi perfil",
       "Mu\u00e9strame las capacidades y accesos del plugin"

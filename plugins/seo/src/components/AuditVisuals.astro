@@ -1,0 +1,195 @@
+---
+// @ts-nocheck -- Los payloads están validados por AuditStore antes de llegar al renderer.
+type AnyItem = Record<string, any>;
+const { auditId, metrics, coverage = [], history = [] } = Astro.props as { auditId: string; metrics: AnyItem; coverage?: AnyItem[]; history?: AnyItem[] };
+const kpis: AnyItem[] = metrics?.kpis || [];
+const datasets: AnyItem[] = metrics?.datasets || [];
+const charts: AnyItem[] = metrics?.charts || [];
+const sections = [
+  ["summary", "Resumen"], ["visibility", "Visibilidad"], ["traffic", "Tráfico"],
+  ["local", "Local"], ["technical", "Técnico"], ["content", "Contenido"],
+];
+const datasetFor = (chart: AnyItem) => datasets.find((dataset) => dataset.id === chart.datasetId);
+const chartsFor = (section: string) => charts.filter((chart) => chart.section === section);
+const palette: Record<string, string> = { lime: "var(--lime)", blue: "var(--blue)", orange: "var(--orange)", green: "var(--green)", red: "var(--red)", ink: "var(--ink)" };
+const categoryColors = ["lime", "blue", "orange", "green", "red", "ink"];
+const sparkline = (kpi: AnyItem) => {
+  const dataset = datasets.find((item) => item.id === kpi.datasetId && item.type === "timeseries");
+  if (!dataset) return "";
+  const key = kpi.datasetSeriesKey || dataset.series[0]?.key;
+  const values = dataset.rows.slice(-28).map((row) => row.values[key]).filter((value) => Number.isFinite(value));
+  if (values.length < 2) return "";
+  const min = Math.min(...values), max = Math.max(...values), span = max - min || 1;
+  return values.map((value, index) => `${(index / (values.length - 1) * 160).toFixed(1)},${(42 - (value - min) / span * 38).toFixed(1)}`).join(" ");
+};
+const deltaLabel = (kpi: AnyItem) => {
+  if (typeof kpi.deltaPercent === "number") return `${kpi.deltaPercent > 0 ? "+" : ""}${kpi.deltaPercent.toLocaleString("es-ES", { maximumFractionDigits: 1 })}% vs. anterior`;
+  if (typeof kpi.delta === "string") return kpi.delta;
+  return "Sin comparativa";
+};
+const targetLabel = (target: AnyItem | null) => !target ? null : `${target.operator === "lte" ? "≤" : target.operator === "gte" ? "≥" : target.operator === "eq" ? "=" : "rango"} ${target.value}${target.maxValue != null ? `–${target.maxValue}` : ""}`;
+const payload = (chart: AnyItem) => JSON.stringify({ chart, dataset: datasetFor(chart) }).replace(/</g, "\\u003c");
+const donutStyle = (dataset: AnyItem, key: string) => {
+  const values = dataset.rows.map((row: AnyItem) => Math.max(0, row.values[key] || 0));
+  const total = values.reduce((sum: number, value: number) => sum + value, 0) || 1;
+  let cursor = 0;
+  const stops = values.map((value: number, index: number) => { const start = cursor; cursor += value / total * 100; return `${palette[categoryColors[index % categoryColors.length]]} ${start}% ${cursor}%`; });
+  return `background:conic-gradient(${stops.join(",")})`;
+};
+---
+
+{(kpis.length > 0 || charts.length > 0 || coverage.length > 0) && <section class="audit-explorer" aria-label="Panel de datos de la auditoría">
+  <div class="audit-controls">
+    <nav class="audit-tabs" aria-label="Secciones de la auditoría">
+      {sections.map(([id, label], index) => <button type="button" role="tab" aria-selected={index === 0 ? "true" : "false"} data-tab={id}>{label}</button>)}
+    </nav>
+    <div class="range-switch" aria-label="Rango histórico"><button type="button" data-range="90d" aria-pressed="true">90 días</button><button type="button" data-range="12m" aria-pressed="false">12 meses</button></div>
+  </div>
+
+  {sections.map(([section, label], sectionIndex) => <section class="audit-tab-panel" data-panel={section} hidden={sectionIndex !== 0} aria-label={label}>
+    {section === "summary" && <>
+      <div class="section-head"><div><p class="eyebrow">Lectura ejecutiva</p><h2>KPIs principales</h2></div><span class="muted">{kpis.length} indicadores verificados</span></div>
+      <div class="kpi-grid">
+        {kpis.map((kpi) => <article class={`kpi kpi-${kpi.sentiment}`}>
+          <div class="kpi-top"><span>{kpi.label}</span><i aria-hidden="true"></i></div>
+          <strong>{kpi.formatted}</strong>
+          {sparkline(kpi) && <svg class="kpi-sparkline" viewBox="0 0 160 46" role="img" aria-label={`Tendencia reciente de ${kpi.label}`}><polyline points={sparkline(kpi)} /></svg>}
+          <div class="kpi-foot"><span class="kpi-delta">{deltaLabel(kpi)}</span><span>{kpi.source}</span></div>
+          <div class="kpi-meta">{targetLabel(kpi.target) && <span>Objetivo {targetLabel(kpi.target)}</span>}{kpi.context && <span>{kpi.context}</span>}</div>
+        </article>)}
+      </div>
+
+      {coverage.length > 0 && <><div class="section-head compact"><div><p class="eyebrow">Calidad del dato</p><h2>Cobertura</h2></div></div><div class="coverage-grid">{coverage.map((source) => <article class={`coverage coverage-${source.status}`}><div><i></i><strong>{source.label}</strong></div><span>{source.status}</span><p>{source.detail || "Sin detalle adicional."}</p></article>)}</div></>}
+
+      {history.length > 0 && <><div class="section-head compact"><div><p class="eyebrow">Snapshots</p><h2>Evolución del proyecto</h2></div><span class="muted">{history.length} auditorías</span></div><div class="snapshot-strip">{history.map((snapshot) => <a href={`/audits/${snapshot.id}`}><span>{snapshot.createdAt.slice(0, 10)}</span><strong>{snapshot.score ?? "—"}</strong><small>{snapshot.status}</small></a>)}</div></>}
+    </>}
+
+    {chartsFor(section).length > 0 && <div class="section-head"><div><p class="eyebrow">Datos y decisiones</p><h2>{label}</h2></div><span class="muted">{chartsFor(section).length} gráficas</span></div>}
+    <div class="chart-grid">
+      {chartsFor(section).map((chart) => {
+        const dataset = datasetFor(chart);
+        return <article class={`chart-card ${chart.engine === "echarts" ? "chart-wide" : ""}`} data-chart-card>
+          <header><div><span class="pill">{chart.type}</span><h3>{chart.title}</h3></div><span class="chart-source">{dataset?.source}</span></header>
+          {chart.description && <p class="chart-description">{chart.description}</p>}
+          <script is:inline type="application/json" class="chart-payload" set:html={payload(chart)} />
+          {chart.engine === "echarts" ? <>
+            <div class="advanced-chart" data-chart-id={chart.id}></div>
+          </> : chart.type === "donut" ? <div class="native-donut"><div class="native-donut-ring" style={donutStyle(dataset, chart.seriesKeys[0])}><i></i></div><div class="native-donut-list">{(dataset?.rows as AnyItem[])?.map((row: AnyItem, index: number) => <div><i style={`background:${palette[categoryColors[index % categoryColors.length]]}`}></i><span>{row.label}</span><strong>{row.values[chart.seriesKeys[0]] ?? "—"}</strong></div>)}</div></div> : <div class="native-bars">{(dataset?.rows as AnyItem[])?.map((row: AnyItem) => <div><span>{row.label}</span>{(chart.seriesKeys as string[]).map((key: string) => { const series = (dataset.series as AnyItem[]).find((item: AnyItem) => item.key === key); const max = Math.max(...(dataset.rows as AnyItem[]).map((item: AnyItem) => item.values[key] || 0), 1); return <div class="native-bar"><i style={`width:${Math.max(2, (row.values[key] || 0) / max * 100)}%;background:${palette[series?.color || "ink"]}`}></i><strong>{row.values[key] ?? "—"}</strong></div>})}</div>)}</div>}
+          <div class="chart-actions"><button type="button" data-export-png={chart.id}>PNG</button><a href={`/api/audits/${auditId}/charts/${chart.id}.csv`}>CSV</a></div>
+          <details class="chart-data"><summary>Ver datos accesibles</summary><div class="table-scroll"><table><thead><tr><th>{dataset?.type === "timeseries" ? "Fecha" : "Dato"}</th>{(dataset?.series as AnyItem[])?.map((series: AnyItem) => <th>{series.label}</th>)}</tr></thead><tbody>{dataset?.type !== "matrix" && (dataset?.rows as AnyItem[])?.map((row: AnyItem) => <tr><th>{row.date || row.label}</th>{(dataset.series as AnyItem[]).map((series: AnyItem) => <td>{row.values[series.key] ?? "—"}</td>)}</tr>)}</tbody></table></div></details>
+        </article>;
+      })}
+    </div>
+    {section !== "summary" && chartsFor(section).length === 0 && <div class="panel tab-empty"><strong>Sin datos de {label.toLowerCase()}.</strong><p>Esta fuente no estaba disponible en el snapshot; no se han creado gráficas de relleno.</p></div>}
+  </section>)}
+</section>}
+
+<script>
+  // @ts-nocheck -- Los payloads del cliente proceden exclusivamente del AuditStore validado.
+  const colors: Record<string, string> = { lime: "#b9ef29", blue: "#3c6fe1", orange: "#e78a2f", green: "#218252", red: "#d94a36", ink: "#151713" };
+  const instances = new Map<HTMLElement, any>();
+  let echartsApi: any = null;
+  let currentRange = new URL(location.href).searchParams.get("range") || "90d";
+
+  async function ensureEcharts() {
+    if (echartsApi) return echartsApi;
+    const [core, charts, components, renderers] = await Promise.all([import("echarts/core"), import("echarts/charts"), import("echarts/components"), import("echarts/renderers")]);
+    core.use([charts.LineChart, charts.BarChart, charts.ScatterChart, charts.HeatmapChart, components.GridComponent, components.TooltipComponent, components.LegendComponent, components.DataZoomComponent, components.VisualMapComponent, components.MarkLineComponent, renderers.CanvasRenderer]);
+    echartsApi = core;
+    return core;
+  }
+
+  function monthly(rows: any[], series: any[]) {
+    const groups = new Map<string, any[]>();
+    rows.forEach((row) => {
+      const key = row.date.slice(0, 7);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(row);
+    });
+    return [...groups].map(([date, items]) => ({ date, values: Object.fromEntries(series.map((meta) => {
+      const values = items.map((item) => item.values[meta.key]).filter(Number.isFinite);
+      const weightedPairs = meta.weightKey ? items.map((item) => [item.values[meta.key], item.values[meta.weightKey]]).filter(([value, weight]) => Number.isFinite(value) && Number.isFinite(weight) && weight > 0) : [];
+      const weightTotal = weightedPairs.reduce((sum, [, weight]) => sum + weight, 0);
+      const weighted = meta.aggregation === "weighted-average" && weightTotal > 0 ? weightedPairs.reduce((sum, [value, weight]) => sum + value * weight, 0) / weightTotal : null;
+      const value = !values.length ? null : meta.aggregation === "average" ? values.reduce((a, b) => a + b, 0) / values.length : meta.aggregation === "weighted-average" ? weighted : meta.aggregation === "last" ? values.at(-1) : values.reduce((a, b) => a + b, 0);
+      return [meta.key, value];
+    })) }));
+  }
+
+  function visibleRows(dataset: any) {
+    if (dataset.type !== "timeseries") return dataset.rows;
+    return currentRange === "90d" ? dataset.rows.slice(-90) : monthly(dataset.rows.slice(-366), dataset.series);
+  }
+
+  function optionFor(chart: any, dataset: any) {
+    const rows = visibleRows(dataset);
+    const previousRows = chart.compareMode === "previous-period" && currentRange === "90d" && dataset.type === "timeseries" ? dataset.rows.slice(-180, -90) : [];
+    const meta = dataset.series.filter((series) => chart.seriesKeys.includes(series.key));
+    const base = { animationDuration: matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 420, color: meta.map((series) => colors[series.color]), tooltip: { trigger: chart.type === "scatter" ? "item" : "axis", renderMode: "richText" }, legend: { top: 0, textStyle: { color: "#666960" } }, grid: { left: 44, right: meta.some((series) => series.axis === "right") ? 50 : 24, top: 50, bottom: dataset.type === "timeseries" ? 64 : 45, containLabel: true }, dataZoom: dataset.type === "timeseries" ? [{ type: "inside" }, { type: "slider", bottom: 8, height: 20 }] : [], xAxis: { type: "category", data: rows.map((row) => row.date || row.label), axisLabel: { color: "#666960", hideOverlap: true }, axisLine: { lineStyle: { color: "#ceccc2" } } }, yAxis: [{ type: "value", axisLabel: { color: "#666960" }, splitLine: { lineStyle: { color: "#e1dfd7", type: "dashed" } } }, ...(meta.some((series) => series.axis === "right") ? [{ type: "value", axisLabel: { color: "#666960" }, splitLine: { show: false } }] : [])] };
+    if (chart.type === "heatmap" && dataset.type === "matrix") {
+      const xs = [...new Set(rows.map((row) => row.x))], ys = [...new Set(rows.map((row) => row.y))];
+      return { ...base, xAxis: { type: "category", data: xs }, yAxis: { type: "category", data: ys }, visualMap: { min: Math.min(...rows.map((row) => row.value)), max: Math.max(...rows.map((row) => row.value)), calculable: true, orient: "horizontal", left: "center", bottom: 0, inRange: { color: ["#f4f2eb", "#d9ff4b", "#151713"] } }, series: [{ type: "heatmap", data: rows.map((row) => [xs.indexOf(row.x), ys.indexOf(row.y), row.value]) }] };
+    }
+    if (chart.type === "scatter") return { ...base, series: [{ type: "scatter", symbolSize: 12, data: rows.map((row) => [row.values[meta[0].key], row.values[meta[1].key], row.label]) }] };
+    const currentSeries = meta.map((series) => ({ name: series.label, type: chart.type === "bar" || chart.type === "stacked-bar" ? "bar" : "line", yAxisIndex: series.axis === "right" ? 1 : 0, stack: chart.type === "stacked-bar" ? "total" : undefined, smooth: chart.type === "line" || chart.type === "area", showSymbol: false, areaStyle: chart.type === "area" ? { opacity: .13 } : undefined, lineStyle: { width: 3 }, data: rows.map((row) => row.values[series.key]), connectNulls: false, markLine: chart.annotations?.length ? { symbol: "none", data: chart.annotations.filter((item) => item.date).map((item) => ({ xAxis: item.date, label: { formatter: item.label } })) } : undefined }));
+    const comparisonSeries = previousRows.length === rows.length ? meta.map((series) => ({ name: `${series.label} · periodo anterior`, type: "line", yAxisIndex: series.axis === "right" ? 1 : 0, showSymbol: false, smooth: true, lineStyle: { width: 2, type: "dashed", opacity: .55 }, data: previousRows.map((row) => row.values[series.key]), connectNulls: false })) : [];
+    return { ...base, series: [...currentSeries, ...comparisonSeries] };
+  }
+
+  async function renderCharts() {
+    const elements = [...document.querySelectorAll<HTMLElement>(".audit-tab-panel:not([hidden]) .advanced-chart")];
+    if (!elements.length) return;
+    const echarts = await ensureEcharts();
+    elements.forEach((element) => {
+      const card = element.closest("[data-chart-card]");
+      const payload = JSON.parse(card!.querySelector(".chart-payload")!.textContent || "{}");
+      let instance = instances.get(element);
+      if (!instance) { instance = echarts.init(element); instances.set(element, instance); }
+      instance.setOption(optionFor(payload.chart, payload.dataset), { notMerge: true });
+      const button = card!.querySelector<HTMLButtonElement>("[data-export-png]")!;
+      button.disabled = false;
+      button.onclick = () => { const link = document.createElement("a"); link.href = instance.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#fbfaf6" }); link.download = `${payload.chart.id}.png`; link.click(); };
+    });
+  }
+
+  function exportNative(card: HTMLElement, payload: any) {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1400; canvas.height = 800;
+    const ctx = canvas.getContext("2d")!; const dataset = payload.dataset; const chart = payload.chart;
+    ctx.fillStyle = "#fbfaf6"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = colors.ink; ctx.font = "700 44px Arial"; ctx.fillText(chart.title, 70, 85);
+    ctx.font = "24px Arial"; ctx.fillStyle = "#666960"; ctx.fillText(dataset.source || "SEO Workspace", 70, 125);
+    const rows = dataset.rows || [], key = chart.seriesKeys[0];
+    if (chart.type === "donut") {
+      const values = rows.map((row: any) => Math.max(0, Number(row.values[key]) || 0)); const total = values.reduce((a: number, b: number) => a + b, 0) || 1; let angle = -Math.PI / 2;
+      values.forEach((value: number, index: number) => { const next = angle + value / total * Math.PI * 2; ctx.beginPath(); ctx.arc(390, 440, 220, angle, next); ctx.arc(390, 440, 120, next, angle, true); ctx.closePath(); ctx.fillStyle = Object.values(colors)[index % 6]; ctx.fill(); angle = next; });
+      rows.forEach((row: any, index: number) => { const y = 265 + index * 54; ctx.fillStyle = Object.values(colors)[index % 6]; ctx.fillRect(720, y - 22, 24, 24); ctx.fillStyle = colors.ink; ctx.font = "24px Arial"; ctx.fillText(`${row.label}: ${row.values[key] ?? "—"}`, 765, y); });
+    } else {
+      const max = Math.max(...rows.flatMap((row: any) => chart.seriesKeys.map((seriesKey: string) => Number(row.values[seriesKey]) || 0)), 1); const rowHeight = Math.min(68, 570 / Math.max(rows.length, 1));
+      rows.slice(0, 12).forEach((row: any, index: number) => { const y = 185 + index * rowHeight; ctx.fillStyle = colors.ink; ctx.font = "20px Arial"; ctx.fillText(String(row.label).slice(0, 28), 70, y + 22); chart.seriesKeys.forEach((seriesKey: string, seriesIndex: number) => { const value = Number(row.values[seriesKey]) || 0; ctx.fillStyle = Object.values(colors)[seriesIndex % 6]; ctx.fillRect(390, y + seriesIndex * 20, value / max * 850, 16); }); });
+    }
+    const link = document.createElement("a"); link.href = canvas.toDataURL("image/png"); link.download = `${chart.id}.png`; link.click();
+  }
+
+  document.querySelectorAll<HTMLElement>("[data-chart-card]").forEach((card) => {
+    if (card.querySelector(".advanced-chart")) return;
+    const payload = JSON.parse(card.querySelector(".chart-payload")!.textContent || "{}");
+    card.querySelector<HTMLButtonElement>("[data-export-png]")!.onclick = () => exportNative(card, payload);
+  });
+
+  document.querySelectorAll<HTMLButtonElement>("[data-tab]").forEach((button) => button.addEventListener("click", () => {
+    const tab = button.dataset.tab;
+    document.querySelectorAll<HTMLButtonElement>("[data-tab]").forEach((item) => item.setAttribute("aria-selected", String(item === button)));
+    document.querySelectorAll<HTMLElement>("[data-panel]").forEach((panel) => panel.hidden = panel.dataset.panel !== tab);
+    const url = new URL(location.href); url.searchParams.set("view", tab); history.replaceState({}, "", url); requestAnimationFrame(() => { renderCharts(); instances.forEach((instance) => instance.resize()); });
+  }));
+  document.querySelectorAll<HTMLButtonElement>("[data-range]").forEach((button) => button.addEventListener("click", () => {
+    currentRange = button.dataset.range || "90d"; document.querySelectorAll<HTMLButtonElement>("[data-range]").forEach((item) => item.setAttribute("aria-pressed", String(item === button)));
+    const url = new URL(location.href); url.searchParams.set("range", currentRange); history.replaceState({}, "", url); renderCharts();
+  }));
+  const requestedTab = new URL(location.href).searchParams.get("view");
+  if (requestedTab) document.querySelector(`[data-tab="${CSS.escape(requestedTab)}"]`)?.click();
+  document.querySelectorAll<HTMLButtonElement>("[data-range]").forEach((item) => item.setAttribute("aria-pressed", String(item.dataset.range === currentRange)));
+  renderCharts();
+  new ResizeObserver(() => instances.forEach((instance) => instance.resize())).observe(document.querySelector(".audit-explorer") || document.body);
+</script>

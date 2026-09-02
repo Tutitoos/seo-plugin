@@ -1,0 +1,7 @@
+interface:
+  display_name: "SEO Full"
+  short_description: "Auditoría SEO integral con datos Google"
+  brand_color: "#D9FF4B"
+  default_prompt: "Usa $seo full para auditar un sitio con Search Console, Analytics, Business Profile y guardar el informe privado."
+policy:
+  allow_implicit_invocation: true
