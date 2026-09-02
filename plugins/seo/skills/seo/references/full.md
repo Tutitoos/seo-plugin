@@ -20,6 +20,8 @@ Produce una auditoría SEO integral, trazable y guardada en el almacén privado 
 
 - Descubre URLs desde índices sitemap, sitemaps, enlaces internos y Search Console. Audita como máximo 500 URLs con controles ligeros de respuesta HTTP, redirecciones, robots, indexabilidad, canonical, hreflang, metadatos, encabezados, contenido, imágenes, schema, enlaces internos y pertenencia al sitemap.
 - Selecciona de forma determinista hasta 50 páginas profundas: primero páginas comerciales y con tráfico, después URLs con incidencias verificadas y representantes de cada plantilla e idioma. En ellas recopila DOM renderizado, capturas desktop/móvil, Lighthouse/CWV disponibles, inspección de Search Console y cruce con GA4. Si una fase no está disponible, conserva cobertura parcial y un diagnóstico; no la simules.
+- Después del rastreo HTTP ejecuta `npm run audit:deep -- --audit=<id>` desde `plugins/seo`. El runner usa Chrome/Chromium aislado, sin cookies ni perfil persistente, reanuda páginas completadas y continúa aunque una URL falle. Si no existe navegador o dependencia, deja un diagnóstico estable y mantiene la cobertura HTTP.
+- Lighthouse se ejecuta en las 10 páginas profundas prioritarias: tres páginas comerciales tienen tres pasadas y el resto una; guarda la mediana y la variación, diferenciando laboratorio de campo. Nunca persistas el DOM completo ni el perfil del navegador.
 - Inventaría robots.txt, índices sitemap, sitemaps, `manifest.webmanifest`, iconos, feeds, `llms.txt`, canonicals, hreflang, schema y recursos críticos. Detecta sitemaps anidados, ciclos, duplicados, XML inválido y contradicciones con indexabilidad.
 - Evalúa SEO para IA y oportunidades de contenido cuando exista evidencia suficiente.
 - En Search Console consulta primero la dimensión `date` sin filtros para conservar los totales temporales. Rellena fechas ausentes con `null`, nunca con cero. Calcula medias móviles de 7 y 28 días. Consulta aparte `query` y `page` para ganadores, perdedores y oportunidades, y explica que esas filas están limitadas y anonimizadas y no equivalen al total agregado. Analiza también países, dispositivos, indexación y sitemaps.
@@ -34,18 +36,18 @@ Produce una auditoría SEO integral, trazable y guardada en el almacén privado 
 
 Cada ejecución es un snapshot nuevo con un identificador formado por proyecto y timestamp. Solo puede actualizarse mientras sea `draft`; una auditoría `completed` queda congelada. Consulta `get_project_history` para comparar score, incidencias y KPIs con snapshots anteriores. Nunca sobrescribas un resultado completado.
 
-Guarda un manifiesto v3 ligero y separa los datos visuales en `metrics.json` mediante `save_audit_result`: `periods`, `sourceCoverage`, KPIs numéricos, datasets tipados y especificaciones de gráfica permitidas. Usa datasets `timeseries`, `categorical` o `matrix`, fechas ISO y unidades explícitas. No introduzcas configuración ECharts arbitraria.
+Guarda un manifiesto v4 ligero y separa los datos visuales en `metrics.json` mediante `save_audit_result`: `periods`, `sourceCoverage`, KPIs numéricos, datasets tipados y especificaciones de gráfica permitidas. Usa datasets `timeseries`, `categorical` o `matrix`, fechas ISO y unidades explícitas. No introduzcas configuración ECharts arbitraria.
 
 La persistencia v3 es por fases y cada llamada debe comprobarse antes de continuar:
 
-1. Crea o actualiza el resumen draft con `save_audit_result`, incluidos `executive.state`, `executive.change` y hasta cinco prioridades con motivo y criterio de validación.
+1. Crea o actualiza el resumen draft con `save_audit_result`, incluidos `executive.state`, `executive.change` y hasta cinco prioridades con motivo y criterio de validación. Todas las escrituras del snapshot respetan la cuota fija de 512 MB (512.000.000 bytes); si se devuelve `audit-storage-limit-exceeded`, conserva el estado previo y registra el fallo en la ejecución.
 2. Guarda el conjunto completo de incidencias con `save_audit_findings`. Cada P0-P3 debe explicar qué ocurre, evidencia exacta, impacto, URLs, confianza y al menos una acción con pasos, responsable sugerido, esfuerzo y verificación.
 3. Guarda inventario y diagnósticos con `save_audit_inventory`. Cada error usa código estable, etapa, fuente, alcance, si admite reintento, efecto en la completitud y próxima acción exacta.
 4. Guarda páginas con `save_audit_page_batch`, entre 1 y 25 por llamada. No superes 500 totales ni 50 profundas. Usa la URL normalizada para un identificador estable y registra descubrimiento, sitemap, plantilla, idioma, profundidad, cobertura y nivel.
-5. Para cada página profunda, captura desktop y móvil con el navegador autorizado y guarda primero los PNG en una ruta temporal. Ejecuta `npm run attach:evidence -- --audit=<id> --page=<page-id> --desktop=<png> --mobile=<png> --dom=<html>` desde el plugin; el helper valida el PNG, escribe de forma atómica y actualiza la página. No adjuntes capturas a páginas ligeras.
-6. Verifica el inventario con `list_audit_pages` y páginas críticas con `get_audit_page`. Mantén las capturas exclusivamente en `pages/<page-id>/assets/`.
+5. Para cada página profunda, ejecuta `npm run audit:deep -- --audit=<id>`; el runner captura desktop y móvil, extrae señales del DOM y actualiza la página sin guardar HTML completo. No adjuntes capturas a páginas ligeras. El progreso reanudable se conserva en `.seo-data/runs/<id>.json` y los fallos de navegador no bloquean el rastreo HTTP.
+6. Verifica el inventario con `list_audit_pages`, páginas críticas con `get_audit_page`, cambios con `get_audit_changes`, estado de etapas con `get_audit_run_status` y tamaño con `get_audit_storage`. Mantén las capturas exclusivamente en `pages/<page-id>/assets/`.
 
-No asignes una puntuación SEO arbitraria por URL. La salud de página es `crítica`, `con problemas`, `correcta` o `sin cobertura`, determinada por la peor incidencia comprobada y la cobertura real.
+No asignes una puntuación SEO arbitraria por URL. La salud de página es `crítica` si existe un P0, `con problemas` si existe un P1-P3, `correcta` si no hay incidencias con cobertura suficiente o `sin cobertura` cuando no hay evidencia verificable.
 
 Antes del informe narrativo construye un panel con KPIs comparables. Cada KPI debe incluir valor actual, valor anterior cuando exista, delta, fuente, periodo o contexto y una interpretación semántica: `positive`, `negative`, `neutral` o `warning`. La dirección numérica no determina por sí sola la interpretación: una posición media que sube numéricamente puede ser negativa.
 
@@ -105,3 +107,4 @@ Antes de cerrar, confirma explícitamente:
 - inventario técnico completo, listado de URLs y hasta 50 páginas profundas con cobertura honesta;
 - hallazgos estructurados y diagnósticos accionables, sin HTML no confiable ni secretos;
 - ciclo del tracker coherente con la nueva detección, verificación, reapertura y riesgo aceptado.
+- uso de almacenamiento medido con `get_audit_storage`, cuota de `512.000.000` bytes (512 MB) respetada y ningún lote guardado parcialmente cuando se supera.

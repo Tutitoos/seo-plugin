@@ -1,8 +1,9 @@
-import { mkdir, readFile, readdir, writeFile, rename, chmod } from "node:fs/promises";
+import { mkdir, readFile, readdir } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { ensureDataRoot, insideDataRoot, safeId } from "./data-root.mjs";
-import { readJson, writeJsonAtomic } from "./json-file.mjs";
+import { readJson } from "./json-file.mjs";
 import { ProjectSettingsStore } from "./project-settings-store.mjs";
+import { writeAuditFilesAtomic } from "./audit-storage.mjs";
 
 const STATUSES = new Set(["draft", "completed", "failed"]);
 const KPI_POLICIES = new Set(["higher-is-better", "lower-is-better", "informational"]);
@@ -220,7 +221,6 @@ export class AuditStore {
     const folder = insideDataRoot("audits", id);
     const manifestPath = insideDataRoot("audits", id, "manifest.json");
     const metricsPath = insideDataRoot("audits", id, "metrics.json");
-    const reportPath = insideDataRoot("audits", id, "report.md");
     await mkdir(folder, { recursive: true, mode: 0o700 });
     const previous = await readJson(manifestPath, {});
     if (previous.status === "completed") throw new Error(`La auditoría ${id} está completada y es inmutable. Crea un nuevo snapshot.`);
@@ -233,14 +233,14 @@ export class AuditStore {
     else if (chartsInput?.some((chart) => !chart.datasetId)) {
       const converted = legacyCharts(chartsInput); datasets = converted.datasets.map(normalizeDataset); chartsInput = converted.charts;
     } else datasets = previousMetrics.datasets || [];
-    const metrics = { version: 3, kpis: normalizeKpis(input.kpis, previousMetrics.kpis, settings), datasets, charts: normalizeCharts(chartsInput, datasets, previousMetrics.charts) };
+    const metrics = { version: 4, kpis: normalizeKpis(input.kpis, previousMetrics.kpis, settings), datasets, charts: normalizeCharts(chartsInput, datasets, previousMetrics.charts) };
     const status = input.status || previous.status || "completed";
     if (!STATUSES.has(status)) throw new Error("status debe ser draft, completed o failed.");
     const score = input.score ?? previous.score ?? null;
     if (score !== null && (!Number.isFinite(score) || score < 0 || score > 100)) throw new Error("score debe estar entre 0 y 100.");
     const now = this.now();
     const manifest = {
-      version: 3, id, title: text(input.title || previous.title, "title", 180, true), project,
+      version: 4, id, title: text(input.title || previous.title, "title", 180, true), project,
       profileId: input.profileId ? safeId(input.profileId, "profileId") : previous.profileId || null,
       auditType: safeId(input.auditType || previous.auditType || "seo-full", "auditType"), status, score,
       summary: text(input.summary ?? previous.summary, "summary", 500),
@@ -252,14 +252,14 @@ export class AuditStore {
       metrics: { path: "metrics.json", kpiCount: metrics.kpis.length, datasetCount: metrics.datasets.length, chartCount: metrics.charts.length },
       createdAt: previous.createdAt || now, updatedAt: now, completedAt: status === "completed" ? now : null,
     };
-    await writeJsonAtomic(metricsPath, metrics);
-    await writeJsonAtomic(manifestPath, manifest);
+    const files = [
+      { relativePath: "metrics.json", value: metrics },
+      { relativePath: "manifest.json", value: manifest },
+    ];
     if (typeof input.reportMarkdown === "string") {
-      const temporary = `${reportPath}.${randomUUID()}.tmp`;
-      await writeFile(temporary, input.reportMarkdown, { mode: 0o600 });
-      await chmod(temporary, 0o600).catch(() => {});
-      await rename(temporary, reportPath);
+      files.push({ relativePath: "report.md", bytes: input.reportMarkdown });
     }
+    await writeAuditFilesAtomic(id, files);
     return { ...manifest, ...metrics };
   }
 

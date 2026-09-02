@@ -29,9 +29,9 @@ test("rastrea sitemaps anidados o cíclicos y conserva errores sin inventar cobe
   const { AuditStore } = await import(`../src/audit-store.mjs?crawler=${Date.now()}`);
   await new AuditStore().save({ id: "crawl-audit", title: "Crawl", project: { slug: "demo", name: "Demo" }, status: "draft" });
   const url = `http://127.0.0.1:${server.address().port}`;
-  const { stdout } = await run(process.execPath, ["scripts/crawl-site-audit.mjs", "--audit=crawl-audit", `--url=${url}`, "--max=20", "--deep=2"], { cwd: new URL("..", import.meta.url), env: { ...process.env, SEO_PLUGIN_DATA_DIR: root }, timeout: 20000 });
+  const { stdout } = await run(process.execPath, ["scripts/crawl-site-audit.mjs", "--audit=crawl-audit", `--url=${url}`, "--max=20", "--deep=2", "--allow-private"], { cwd: new URL("..", import.meta.url), env: { ...process.env, SEO_PLUGIN_DATA_DIR: root }, timeout: 20000 });
   const summary = JSON.parse(stdout);
-  assert.equal(summary.version, 3);
+  assert.equal(summary.version, 4);
   assert.ok(summary.pages >= 3);
   const diagnostics = JSON.parse(await readFile(join(root, "audits", "crawl-audit", "diagnostics.json")));
   assert.ok(diagnostics.diagnostics.some((item) => item.code === "sitemap-malformed"));

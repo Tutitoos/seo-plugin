@@ -4,12 +4,12 @@ import FindingsPanel from "./FindingsPanel.astro";
 import InventoryPanel from "./InventoryPanel.astro";
 import PageTable from "./PageTable.astro";
 type AnyItem = Record<string, any>;
-const { auditId, projectId, metrics, coverage = [], history = [], executive = {}, findings = [], pagesResult = { pages: [], total: 0 }, inventory = {}, diagnostics = [], csrfToken = "", returnTo = "", mode = "audit" } = Astro.props as AnyItem;
+const { auditId, projectId, metrics, coverage = [], history = [], executive = {}, findings = [], pagesResult = { pages: [], total: 0 }, inventory = {}, diagnostics = [], changes = null, csrfToken = "", returnTo = "", mode = "audit" } = Astro.props as AnyItem;
 const kpis: AnyItem[] = metrics?.kpis || [];
 const datasets: AnyItem[] = metrics?.datasets || [];
 const charts: AnyItem[] = metrics?.charts || [];
 const auditSections = [
-  ["summary", "Resumen"], ["findings", "Hallazgos"], ["pages", "Páginas"], ["visibility", "Visibilidad"], ["traffic", "Tráfico"],
+  ["summary", "Resumen"], ["changes", "Cambios"], ["findings", "Hallazgos"], ["pages", "Páginas"], ["visibility", "Visibilidad"], ["traffic", "Tráfico"],
   ["local", "Local"], ["technical", "Técnico"], ["content", "Contenido"], ["inventory", "Inventario"],
 ];
 const sections = mode === "page" ? [["summary", "Resumen"], ["visibility", "Search Console"], ["traffic", "Analytics"], ["technical", "Rendimiento"]] : auditSections;
@@ -34,6 +34,8 @@ const deltaLabel = (kpi: AnyItem) => {
 };
 const targetLabel = (target: AnyItem | null) => !target ? null : `${target.operator === "lte" ? "≤" : target.operator === "gte" ? "≥" : target.operator === "eq" ? "=" : "rango"} ${target.value}${target.maxValue != null ? `–${target.maxValue}` : ""}`;
 const payload = (chart: AnyItem) => JSON.stringify({ chart, dataset: datasetFor(chart) }).replace(/</g, "\\u003c");
+const changeClass = (status: string) => ({ nuevo: "new", mejorado: "improved", regresión: "regression", resuelto: "resolved", "sin cambios": "unchanged" }[status] || "unchanged");
+const changeLabel = (status: string) => ({ nuevo: "Nuevo", mejorado: "Mejorado", regresión: "Regresión", resuelto: "Resuelto", "sin cambios": "Sin cambios" }[status] || status);
 const donutStyle = (dataset: AnyItem, key: string) => {
   const values = dataset.rows.map((row: AnyItem) => Math.max(0, row.values[key] || 0));
   const total = values.reduce((sum: number, value: number) => sum + value, 0) || 1;
@@ -75,6 +77,7 @@ const donutStyle = (dataset: AnyItem, key: string) => {
     </>}
 
     {section === "findings" && <><div class="section-head"><div><p class="eyebrow">Problema → acción → verificación</p><h2>Hallazgos</h2></div><span class="muted">{findings.length} incidencias</span></div><FindingsPanel findings={findings} projectId={projectId} csrfToken={csrfToken} returnTo={returnTo} /></>}
+    {section === "changes" && <><div class="section-head"><div><p class="eyebrow">Comparativa con el snapshot anterior</p><h2>Qué ha cambiado</h2></div><span class="muted">{changes?.comparable ? `${changes.counts.changedPages} páginas con cambios` : "Sin comparativa"}</span></div>{changes?.comparable ? <><div class="change-summary"><article><strong>{changes.findingChanges.new.length}</strong><span>hallazgos nuevos</span></article><article><strong>{changes.findingChanges.resolved.length}</strong><span>hallazgos resueltos</span></article><article><strong>{changes.findingChanges.reopened.length}</strong><span>reabiertos</span></article><article><strong>{changes.findingChanges.persistent.length}</strong><span>persistentes</span></article></div>{changes.metricChanges?.length > 0 && <div class="table-scroll change-metrics"><table><caption>Evolución de KPIs</caption><thead><tr><th>KPI</th><th>Estado</th><th>Anterior</th><th>Actual</th><th>Delta</th></tr></thead><tbody>{changes.metricChanges.map((metric) => <tr><th>{metric.label || metric.id}</th><td>{metric.status}</td><td>{metric.previous ?? "—"}</td><td>{metric.current ?? "—"}</td><td>{metric.delta ?? "—"}</td></tr>)}</tbody></table></div>}<div class="change-list">{changes.pageChanges.map((change) => <article class={`change-card change-${changeClass(change.status)}`}><header><span class="pill">{changeLabel(change.status)}</span><code>{change.url}</code></header>{change.fields?.length > 0 ? <ul>{change.fields.map((field) => <li><strong>{field.field}</strong><span>{field.previous ?? "—"} → {field.current ?? "—"}</span></li>)}</ul> : <p class="muted">{change.status === "nuevo" ? "URL incorporada a la cobertura." : change.status === "resuelto" ? "URL retirada de la cobertura." : "No se modificaron señales verificadas."}</p>}</article>)}</div>{changes.pageChanges.length === 0 && <div class="panel tab-empty"><strong>No se han detectado cambios de página.</strong><p>La estructura y las señales auditadas coinciden con el snapshot anterior.</p></div>}</> : <div class="panel tab-empty"><strong>Todavía no existe un snapshot anterior comparable.</strong><p>Ejecuta otra auditoría del mismo proyecto para activar esta vista.</p></div>}</>}
     {section === "pages" && <><div class="section-head"><div><p class="eyebrow">Inventario rastreado</p><h2>Páginas</h2></div><span class="muted">{pagesResult.total} URLs</span></div><PageTable auditId={auditId} pages={pagesResult.pages.slice(0, 20)} total={pagesResult.total} compact={true} /></>}
     {section === "inventory" && <><div class="section-head"><div><p class="eyebrow">Superficie técnica pública</p><h2>Inventario</h2></div></div><InventoryPanel inventory={inventory} diagnostics={diagnostics} /></>}
 

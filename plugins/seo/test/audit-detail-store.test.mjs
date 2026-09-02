@@ -24,19 +24,19 @@ test("genera ids estables a partir de la URL canónica normalizada", async () =>
   assert.throws(() => pageIdForUrl("file:///etc/passwd"), /HTTP/);
 });
 
-test("guarda hallazgos, inventario y páginas filtrables en un snapshot v3", async () => {
+test("guarda hallazgos, inventario y páginas filtrables en un snapshot v4", async () => {
   const { detail } = await setup("save-");
   const savedFindings = await detail.saveFindings("demo-audit", [finding]);
   await detail.saveInventory("demo-audit", { sitemaps: [{ url: "https://example.com/sitemap.xml", status: 200 }], robots: { status: 200 } }, [{ code: "ga4-unavailable", source: "google-analytics", message: "OAuth pendiente.", completenessImpact: "No hay tráfico ni conversiones.", nextAction: "Conectar GA4 y repetir la fase de datos.", retryable: true }]);
   const result = await detail.savePageBatch("demo-audit", [{ url: "https://example.com/error/", canonicalUrl: "https://example.com/error", discoverySources: ["sitemap"], sitemapUrls: ["https://example.com/sitemap.xml"], template: "landing", locale: "es", auditLevel: "deep", coverage: "complete", issueCounts: { p1: 1 }, findingIds: [savedFindings.findings[0].id], response: { status: 500 }, indexability: { indexable: false }, metadata: { title: "Error" } }]);
   assert.deepEqual(result, { saved: 1, total: 1, deepCount: 1 });
-  const listed = await detail.listPages("demo-audit", { health: "critical", template: "landing" });
+  const listed = await detail.listPages("demo-audit", { health: "issues", template: "landing" });
   assert.equal(listed.total, 1);
   const page = await detail.getPage("demo-audit", listed.pages[0].id);
   assert.equal(page.page.response.status, 500);
   assert.equal(page.findings[0].workflow.status, "pending");
   const manifest = JSON.parse(await readFile(join(process.env.SEO_PLUGIN_DATA_DIR, "audits", "demo-audit", "manifest.json")));
-  assert.equal(manifest.version, 3);
+  assert.equal(manifest.version, 4);
   assert.equal(manifest.content.pages.deepCount, 1);
   assert.equal(manifest.content.findings.count, 1);
 });

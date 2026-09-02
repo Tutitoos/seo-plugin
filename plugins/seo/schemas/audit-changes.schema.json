@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Tutitoos/seo-plugin/schemas/audit-changes.schema.json",
+  "title": "SEO audit snapshot changes v4",
+  "type": "object",
+  "required": ["version", "auditId", "comparable", "pageChanges", "findingChanges", "counts"],
+  "properties": {
+    "version": { "const": 4 },
+    "auditId": { "type": "string" },
+    "previousAuditId": { "type": ["string", "null"] },
+    "comparable": { "type": "boolean" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "pageChanges": { "type": "array", "maxItems": 500, "items": { "$ref": "#/$defs/pageChange" } },
+    "metricChanges": { "type": "array", "maxItems": 32, "items": { "type": "object", "required": ["id", "status"], "properties": { "id": { "type": "string" }, "label": { "type": "string" }, "status": { "enum": ["nuevo", "actualizado", "sin cambios", "resuelto"] }, "current": { "type": ["number", "null"] }, "previous": { "type": ["number", "null"] }, "delta": { "type": ["number", "null"] } }, "additionalProperties": true } },
+    "findingChanges": { "type": "object", "properties": { "new": { "type": "array" }, "persistent": { "type": "array" }, "resolved": { "type": "array" }, "reopened": { "type": "array" } }, "additionalProperties": false },
+    "counts": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } }
+  },
+  "$defs": {
+    "pageChange": {
+      "type": "object",
+      "required": ["pageId", "url", "status"],
+      "properties": {
+        "pageId": { "type": "string" },
+        "url": { "type": "string", "format": "uri" },
+        "status": { "enum": ["nuevo", "mejorado", "sin cambios", "regresión", "resuelto"] },
+        "changedFields": { "type": "array", "items": { "type": "string" } },
+        "currentHealth": { "type": "string" },
+        "previousHealth": { "type": ["string", "null"] }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

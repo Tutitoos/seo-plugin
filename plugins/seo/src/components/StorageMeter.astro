@@ -1,0 +1,25 @@
+---
+// @ts-nocheck -- storage is normalized by AuditStorage.
+import { AUDIT_STORAGE_LIMIT_LABEL } from "../audit-storage.mjs";
+const { storage, error } = Astro.props;
+const formatBytes = (bytes) => {
+  if (!Number.isFinite(bytes)) return "—";
+  if (bytes >= 1_000_000_000) return `${(bytes / 1_000_000_000).toFixed(2)} GB`;
+  if (bytes >= 1_000_000) return `${(bytes / 1_000_000).toFixed(1)} MB`;
+  if (bytes >= 1_000) return `${(bytes / 1_000).toFixed(1)} KB`;
+  return `${bytes} B`;
+};
+const statusLabel = { normal: "Dentro del límite", warning: "Vigilar espacio", critical: "Cerca del límite", limit: "Límite alcanzado" };
+const status = storage?.status || "error";
+const percent = Math.min(100, Math.max(0, Number(storage?.percent) || 0));
+const limitLabel = storage?.limitLabel || AUDIT_STORAGE_LIMIT_LABEL;
+---
+<section class={`storage-meter storage-${status}`} aria-labelledby="storage-title">
+  <div class="section-head compact"><div><p class="eyebrow">Almacenamiento privado</p><h2 id="storage-title">Espacio de esta auditoría</h2></div><span class="storage-status">{statusLabel[status] || "No disponible"}</span></div>
+  {error || !storage ? <div class="storage-error" role="alert"><strong>No se ha podido medir el tamaño.</strong><p>{error || "El almacén devolvió un estado no disponible."}</p></div> : <>
+    <div class="storage-summary"><div><strong>{formatBytes(storage.usedBytes)}</strong><span>usados</span></div><div><strong>{formatBytes(storage.availableBytes)}</strong><span>disponibles</span></div><div><strong>{limitLabel}</strong><span>límite por auditoría</span></div><div><strong>{storage.files.toLocaleString("es-ES")}</strong><span>archivos</span></div></div>
+    <div class="storage-progress" role="progressbar" aria-label="Espacio utilizado" aria-valuemin="0" aria-valuemax="100" aria-valuenow={percent} aria-valuetext={`${percent}% utilizado`}><i style={`width:${percent}%`}></i></div>
+    <div class="storage-percent"><span>{percent.toLocaleString("es-ES", { maximumFractionDigits: 1 })}% utilizado</span><span>{limitLabel}</span></div>
+    <dl class="storage-breakdown"><div><dt>Datos estructurados</dt><dd>{formatBytes(storage.breakdown.structured)}</dd></div><div><dt>Informe Markdown</dt><dd>{formatBytes(storage.breakdown.report)}</dd></div><div><dt>Páginas y métricas</dt><dd>{formatBytes(storage.breakdown.pages)}</dd></div><div><dt>Capturas y assets</dt><dd>{formatBytes(storage.breakdown.assets)}</dd></div></dl>
+  </>}
+</section>

@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Tutitoos/seo-plugin/schemas/audit-findings.schema.json",
-  "title": "SEO audit findings v3",
+  "title": "SEO audit findings v1-v4",
   "type": "object",
   "required": ["version", "counts", "findings"],
   "properties": {
-    "version": { "const": 3 },
+    "version": { "enum": [1, 2, 3, 4] },
     "updatedAt": { "type": "string", "format": "date-time" },
     "counts": { "type": "object" },
     "findings": { "type": "array", "maxItems": 1000, "items": { "$ref": "#/$defs/finding" } }

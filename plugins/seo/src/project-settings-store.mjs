@@ -13,6 +13,40 @@ const DEFAULT_TARGETS = {
 const OPERATORS = new Set(["lte", "gte", "eq", "between"]);
 const EMPTY = { version: 1, projects: [] };
 
+function cleanCanonical(value, id) {
+  if (value == null || value === "") return null;
+  let url;
+  try { url = new URL(String(value)); } catch { throw new Error(`canonicalUrl inválida para ${id}.`); }
+  if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) throw new Error(`canonicalUrl inválida para ${id}.`);
+  url.hash = "";
+  return url.toString();
+}
+
+function cleanLocaleMap(value, id) {
+  if (value == null) return {};
+  if (typeof value !== "object" || Array.isArray(value)) throw new Error(`localeMap inválido para ${id}.`);
+  const entries = Object.entries(value);
+  if (entries.length > 30) throw new Error(`localeMap supera 30 reglas para ${id}.`);
+  return Object.fromEntries(entries.map(([prefix, locale]) => {
+    if (!/^\/?[A-Za-z0-9_./-]{1,80}$/.test(prefix) || typeof locale !== "string" || !/^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{2,8})?$/.test(locale)) throw new Error(`localeMap inválido para ${id}.`);
+    return [prefix.startsWith("/") ? prefix : `/${prefix}`, locale];
+  }));
+}
+
+function cleanExclusions(value, id) {
+  if (value == null) return [];
+  if (!Array.isArray(value) || value.length > 100 || value.some((item) => typeof item !== "string" || item.length < 1 || item.length > 160)) throw new Error(`crawlExclusions inválido para ${id}.`);
+  return [...new Set(value.map((item) => item.trim()))];
+}
+
+function cleanBudget(value, id) {
+  if (value == null) return { maxPages: 10, maxRepeats: 3 };
+  if (typeof value !== "object" || Array.isArray(value)) throw new Error(`lighthouseBudget inválido para ${id}.`);
+  const maxPages = value.maxPages == null ? 10 : Number(value.maxPages), maxRepeats = value.maxRepeats == null ? 3 : Number(value.maxRepeats);
+  if (!Number.isInteger(maxPages) || maxPages < 0 || maxPages > 10 || !Number.isInteger(maxRepeats) || maxRepeats < 1 || maxRepeats > 3) throw new Error(`lighthouseBudget inválido para ${id}.`);
+  return { maxPages, maxRepeats };
+}
+
 function cleanTarget(target, id) {
   if (!target || !OPERATORS.has(target.operator)) throw new Error(`Objetivo inválido para ${id}.`);
   if (!Number.isFinite(target.value)) throw new Error(`El objetivo ${id} requiere un valor finito.`);
@@ -38,6 +72,8 @@ function validateRegistry(registry) {
     if (typeof project.timezone !== "string" || !project.timezone.trim()) throw new Error(`El proyecto ${project.id} no tiene timezone.`);
     try { new Intl.DateTimeFormat("es", { timeZone: project.timezone }); } catch { throw new Error(`Timezone inválida para ${project.id}.`); }
     if (!/^[A-Z]{3}$/.test(project.currency)) throw new Error(`Currency inválida para ${project.id}.`);
+    if (project.allowPrivateHosts !== undefined && typeof project.allowPrivateHosts !== "boolean") throw new Error(`allowPrivateHosts inválido para ${project.id}.`);
+    cleanCanonical(project.canonicalUrl, project.id); cleanLocaleMap(project.localeMap, project.id); cleanExclusions(project.crawlExclusions, project.id); cleanBudget(project.lighthouseBudget, project.id);
     for (const [id, target] of Object.entries(project.targets || {})) cleanTarget(target, id);
   }
   return registry;
@@ -56,7 +92,7 @@ export class ProjectSettingsStore {
     const id = safeId(projectId, "projectId");
     const registry = await this.load();
     const saved = registry.projects.find((project) => project.id === id);
-    return saved || { id, timezone: "Europe/Madrid", currency: "EUR", targets: {}, createdAt: null, updatedAt: null };
+    return saved || { id, timezone: "Europe/Madrid", currency: "EUR", targets: {}, allowPrivateHosts: false, canonicalUrl: null, localeMap: {}, crawlExclusions: [], lighthouseBudget: { maxPages: 10, maxRepeats: 3 }, createdAt: null, updatedAt: null };
   }
 
   async resolved(projectId) {
@@ -64,7 +100,7 @@ export class ProjectSettingsStore {
     return { ...project, targets: { ...DEFAULT_TARGETS, ...(project.targets || {}) } };
   }
 
-  async upsert({ id, timezone, currency, targets }) {
+  async upsert({ id, timezone, currency, targets, allowPrivateHosts, canonicalUrl, localeMap, crawlExclusions, lighthouseBudget }) {
     id = safeId(id, "projectId");
     const registry = await this.load();
     const existing = registry.projects.find((project) => project.id === id);
@@ -80,6 +116,11 @@ export class ProjectSettingsStore {
       timezone: String(timezone || existing?.timezone || "Europe/Madrid"),
       currency: String(currency || existing?.currency || "EUR").toUpperCase(),
       targets: nextTargets,
+      allowPrivateHosts: allowPrivateHosts === undefined ? Boolean(existing?.allowPrivateHosts) : Boolean(allowPrivateHosts),
+      canonicalUrl: canonicalUrl === undefined ? (existing?.canonicalUrl || null) : cleanCanonical(canonicalUrl, id),
+      localeMap: localeMap === undefined ? (existing?.localeMap || {}) : cleanLocaleMap(localeMap, id),
+      crawlExclusions: crawlExclusions === undefined ? (existing?.crawlExclusions || []) : cleanExclusions(crawlExclusions, id),
+      lighthouseBudget: lighthouseBudget === undefined ? (existing?.lighthouseBudget || { maxPages: 10, maxRepeats: 3 }) : cleanBudget(lighthouseBudget, id),
       createdAt: existing?.createdAt || now,
       updatedAt: now,
     };

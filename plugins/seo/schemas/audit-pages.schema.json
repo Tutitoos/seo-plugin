@@ -1,9 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Tutitoos/seo-plugin/schemas/audit-pages.schema.json",
-  "title": "SEO page inventory v3",
+  "title": "SEO page inventory v1-v4",
   "type": "object",
   "required": ["version", "pages"],
-  "properties": { "version": { "const": 3 }, "updatedAt": { "type": "string", "format": "date-time" }, "pages": { "type": "array", "maxItems": 500, "items": { "type": "object", "required": ["id", "url", "auditLevel", "coverage", "health"], "properties": { "id": { "type": "string" }, "url": { "type": "string", "format": "uri" }, "canonicalUrl": { "type": ["string", "null"], "format": "uri" }, "auditLevel": { "enum": ["light", "deep"] }, "coverage": { "enum": ["complete", "partial", "none"] }, "health": { "enum": ["critical", "issues", "healthy", "unknown"] } }, "additionalProperties": true } } },
+  "properties": { "version": { "enum": [1, 2, 3, 4] }, "updatedAt": { "type": "string", "format": "date-time" }, "pages": { "type": "array", "maxItems": 500, "items": { "type": "object", "required": ["id", "url", "auditLevel", "coverage", "health"], "properties": { "id": { "type": "string" }, "url": { "type": "string", "format": "uri" }, "canonicalUrl": { "type": ["string", "null"], "format": "uri" }, "auditLevel": { "enum": ["light", "deep"] }, "coverage": { "enum": ["complete", "partial", "none"] }, "health": { "enum": ["critical", "issues", "healthy", "unknown"] }, "expectedLocale": { "type": "string" }, "declaredLocale": { "type": "string" }, "healthReason": { "type": "string" } }, "additionalProperties": true } } },
   "additionalProperties": false
 }

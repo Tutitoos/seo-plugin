@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { insideDataRoot, safeId, ensureDataRoot } from "./data-root.mjs";
 import { readJson, writeJsonAtomic } from "./json-file.mjs";
+import { writeAuditFilesAtomic, writeAuditJsonAtomic } from "./audit-storage.mjs";
 
 const SEVERITIES = ["p0", "p1", "p2", "p3", "info"];
 const WORKFLOW_STATUSES = ["pending", "in_progress", "resolved", "accepted"];
@@ -111,10 +112,9 @@ function issueCounts(findings) {
 }
 
 function healthFromCounts(counts, coverage) {
-  if (coverage === "none") return "unknown";
-  if ((counts?.p0 || 0) > 0 || (counts?.p1 || 0) > 0) return "critical";
-  if ((counts?.p2 || 0) > 0 || (counts?.p3 || 0) > 0) return "issues";
-  return "healthy";
+  if ((counts?.p0 || 0) > 0) return "critical";
+  if ((counts?.p1 || 0) > 0 || (counts?.p2 || 0) > 0 || (counts?.p3 || 0) > 0) return "issues";
+  return coverage === "complete" ? "healthy" : "unknown";
 }
 
 function normalizePage(input, index) {
@@ -128,6 +128,11 @@ function normalizePage(input, index) {
     discoverySources: boundedArray(input.discoverySources, `pages[${index}].discoverySources`, 8, (item) => safeId(item, "discoverySource")),
     sitemapUrls: boundedArray(input.sitemapUrls, `pages[${index}].sitemapUrls`, 20, (item) => cleanUrl(item)),
     template: cleanText(input.template, `pages[${index}].template`, 80), locale: cleanText(input.locale, `pages[${index}].locale`, 24),
+    expectedLocale: cleanText(input.expectedLocale, `pages[${index}].expectedLocale`, 24),
+    declaredLocale: cleanText(input.declaredLocale || input.locale, `pages[${index}].declaredLocale`, 24),
+    aliases: boundedArray(input.aliases, `pages[${index}].aliases`, 20, (item) => cleanUrl(item)),
+    healthReason: cleanText(input.healthReason, `pages[${index}].healthReason`, 240),
+    evidence: compactObject(input.evidence || {}, `pages[${index}].evidence`),
     depth: Math.max(0, Math.min(50, Number(input.depth) || 0)), auditLevel, coverage,
     health: healthFromCounts(counts, coverage), issueCounts: counts,
     findingIds: boundedArray(input.findingIds, `pages[${index}].findingIds`, 100, (item) => safeId(item, "findingId")),
@@ -143,13 +148,13 @@ function normalizePage(input, index) {
     analytics: compactObject(input.analytics || {}, `pages[${index}].analytics`),
     screenshots: boundedArray(input.screenshots, `pages[${index}].screenshots`, 4, (item) => ({ label: cleanText(item.label, "screenshot.label", 80, true), path: cleanText(item.path, "screenshot.path", 180, true) })),
     diagnostics: boundedArray(input.diagnostics, `pages[${index}].diagnostics`, 30, (item) => compactObject(item, "page.diagnostic")),
-    metrics: input.metrics ? compactObject(input.metrics, `pages[${index}].metrics`) : { version: 3, kpis: [], datasets: [], charts: [] },
+    metrics: input.metrics ? compactObject(input.metrics, `pages[${index}].metrics`) : { version: 4, kpis: [], datasets: [], charts: [] },
   };
 }
 
 function pageSummary(page) {
   const { metrics, response, indexability, metadata, links, images, schemas, performance, searchConsole, analytics, screenshots, diagnostics, ...summary } = page;
-  return { ...summary, status: response?.status ?? null, indexable: indexability?.indexable ?? null, title: metadata?.title ?? "", clicks: searchConsole?.clicks ?? null, sessions: analytics?.sessions ?? null };
+  return { ...summary, status: response?.status ?? null, indexable: indexability?.indexable ?? null, title: metadata?.title ?? "", clicks: searchConsole?.clicks ?? null, impressions: searchConsole?.impressions ?? null, ctr: searchConsole?.ctr ?? null, position: searchConsole?.position ?? null, sessions: analytics?.sessions ?? null };
 }
 
 function normalizeDiagnostic(item, index) {
@@ -185,7 +190,7 @@ export class AuditDetailStore {
   async updateContent(auditId, partial) {
     const manifest = await this.manifest(auditId);
     const content = { ...(manifest.content || {}), ...partial };
-    await writeJsonAtomic(insideDataRoot("audits", manifest.id, "manifest.json"), { ...manifest, version: 3, content, updatedAt: this.now() });
+    await writeAuditJsonAtomic(manifest.id, "manifest.json", { ...manifest, version: 4, content, updatedAt: this.now() });
   }
 
   async saveFindings(auditId, input) {
@@ -193,20 +198,21 @@ export class AuditDetailStore {
     if (!Array.isArray(input) || input.length > 1000) throw new Error("findings debe contener como máximo 1000 elementos.");
     const findings = input.map(normalizeFinding);
     if (new Set(findings.map((item) => item.fingerprint)).size !== findings.length) throw new Error("findings contiene incidencias duplicadas.");
-    const payload = { version: 3, updatedAt: this.now(), counts: issueCounts(findings), findings };
-    await writeJsonAtomic(insideDataRoot("audits", manifest.id, "findings.json"), payload);
+    const payload = { version: 4, updatedAt: this.now(), counts: issueCounts(findings), findings };
+    const nextManifest = { ...manifest, version: 4, content: { ...(manifest.content || {}), findings: { path: "findings.json", count: findings.length, counts: payload.counts } }, updatedAt: this.now() };
+    await writeAuditFilesAtomic(manifest.id, [{ relativePath: "findings.json", value: payload }, { relativePath: "manifest.json", value: nextManifest }]);
     await this.reconcileIssues(manifest, findings);
-    await this.updateContent(manifest.id, { findings: { path: "findings.json", count: findings.length, counts: payload.counts } });
     return payload;
   }
 
   async saveInventory(auditId, inventory, diagnostics = undefined) {
     const manifest = await this.writable(auditId);
-    const payload = { version: 3, updatedAt: this.now(), ...compactObject(inventory || {}, "inventory") };
-    await writeJsonAtomic(insideDataRoot("audits", manifest.id, "inventory.json"), payload);
-    const diagnosticList = diagnostics === undefined ? await readJson(insideDataRoot("audits", manifest.id, "diagnostics.json"), { version: 3, diagnostics: [] }) : { version: 3, updatedAt: this.now(), diagnostics: boundedArray(diagnostics, "diagnostics", 500, normalizeDiagnostic) };
-    if (diagnostics !== undefined) await writeJsonAtomic(insideDataRoot("audits", manifest.id, "diagnostics.json"), diagnosticList);
-    await this.updateContent(manifest.id, { inventory: { path: "inventory.json" }, diagnostics: { path: "diagnostics.json", count: diagnosticList.diagnostics?.length || 0 } });
+    const payload = { version: 4, updatedAt: this.now(), ...compactObject(inventory || {}, "inventory") };
+    const diagnosticList = diagnostics === undefined ? await readJson(insideDataRoot("audits", manifest.id, "diagnostics.json"), { version: 4, diagnostics: [] }) : { version: 4, updatedAt: this.now(), diagnostics: boundedArray(diagnostics, "diagnostics", 500, normalizeDiagnostic) };
+    const nextManifest = { ...manifest, version: 4, content: { ...(manifest.content || {}), inventory: { path: "inventory.json" }, diagnostics: { path: "diagnostics.json", count: diagnosticList.diagnostics?.length || 0 } }, updatedAt: this.now() };
+    const files = [{ relativePath: "inventory.json", value: payload }, { relativePath: "manifest.json", value: nextManifest }];
+    if (diagnostics !== undefined) files.splice(1, 0, { relativePath: "diagnostics.json", value: diagnosticList });
+    await writeAuditFilesAtomic(manifest.id, files);
     return { inventory: payload, diagnostics: diagnosticList };
   }
 
@@ -215,31 +221,28 @@ export class AuditDetailStore {
     if (!Array.isArray(input) || input.length < 1 || input.length > 25) throw new Error("pages debe contener entre 1 y 25 páginas por lote.");
     const pages = input.map(normalizePage);
     if (new Set(pages.map((page) => page.id)).size !== pages.length) throw new Error("pages contiene URLs canónicas duplicadas.");
-    const root = insideDataRoot("audits", manifest.id, "pages");
-    await mkdir(root, { recursive: true, mode: 0o700 });
     const indexPath = insideDataRoot("audits", manifest.id, "pages", "index.json");
-    const current = await readJson(indexPath, { version: 3, pages: [] });
+    const current = await readJson(indexPath, { version: 4, pages: [] });
     const byId = new Map((current.pages || []).map((page) => [page.id, page]));
     for (const page of pages) byId.set(page.id, pageSummary(page));
     const all = [...byId.values()].sort((a, b) => a.url.localeCompare(b.url));
     if (all.length > 500) throw new Error("La auditoría supera el límite de 500 páginas.");
     if (all.filter((page) => page.auditLevel === "deep").length > 50) throw new Error("La auditoría supera el límite de 50 páginas profundas.");
+    const payload = { version: 4, updatedAt: this.now(), pages: all };
+    const nextManifest = { ...manifest, version: 4, content: { ...(manifest.content || {}), pages: { path: "pages/index.json", count: all.length, deepCount: all.filter((page) => page.auditLevel === "deep").length } }, updatedAt: this.now() };
+    const files = [];
     for (const page of pages) {
-      const folder = insideDataRoot("audits", manifest.id, "pages", page.id);
-      await mkdir(folder, { recursive: true, mode: 0o700 });
       const { metrics, ...pagePayload } = page;
-      await writeJsonAtomic(insideDataRoot("audits", manifest.id, "pages", page.id, "page.json"), pagePayload);
-      await writeJsonAtomic(insideDataRoot("audits", manifest.id, "pages", page.id, "metrics.json"), metrics);
+      files.push({ relativePath: `pages/${page.id}/page.json`, value: pagePayload }, { relativePath: `pages/${page.id}/metrics.json`, value: metrics });
     }
-    const payload = { version: 3, updatedAt: this.now(), pages: all };
-    await writeJsonAtomic(indexPath, payload);
-    await this.updateContent(manifest.id, { pages: { path: "pages/index.json", count: all.length, deepCount: all.filter((page) => page.auditLevel === "deep").length } });
+    files.push({ relativePath: "pages/index.json", value: payload }, { relativePath: "manifest.json", value: nextManifest });
+    await writeAuditFilesAtomic(manifest.id, files);
     return { saved: pages.length, total: all.length, deepCount: all.filter((page) => page.auditLevel === "deep").length };
   }
 
   async listPages(auditId, filters = {}) {
     const manifest = await this.manifest(auditId);
-    const index = await readJson(insideDataRoot("audits", manifest.id, "pages", "index.json"), { version: 3, pages: [] });
+    const index = await readJson(insideDataRoot("audits", manifest.id, "pages", "index.json"), { version: 4, pages: [] });
     const query = cleanText(filters.query, "query", 240).toLowerCase();
     let pages = index.pages.filter((page) => {
       if (query && !`${page.url} ${page.title} ${page.template}`.toLowerCase().includes(query)) return false;
@@ -264,7 +267,7 @@ export class AuditDetailStore {
     const id = safeId(pageId, "pageId");
     const page = await readJson(insideDataRoot("audits", manifest.id, "pages", id, "page.json"), null);
     if (!page) throw new Error(`No existe la página ${id} en la auditoría ${manifest.id}.`);
-    const metrics = await readJson(insideDataRoot("audits", manifest.id, "pages", id, "metrics.json"), { version: 3, kpis: [], datasets: [], charts: [] });
+    const metrics = await readJson(insideDataRoot("audits", manifest.id, "pages", id, "metrics.json"), { version: 4, kpis: [], datasets: [], charts: [] });
     const findings = await this.getFindings(manifest.id);
     const tracker = await this.listIssues(manifest.project.slug);
     const related = findings.findings.filter((finding) => page.findingIds?.includes(finding.id) || finding.affectedUrls?.includes(page.url) || finding.affectedUrls?.includes(page.canonicalUrl));
@@ -273,13 +276,13 @@ export class AuditDetailStore {
 
   async getFindings(auditId) {
     const manifest = await this.manifest(auditId);
-    return readJson(insideDataRoot("audits", manifest.id, "findings.json"), { version: 3, counts: issueCounts([]), findings: [] });
+    return readJson(insideDataRoot("audits", manifest.id, "findings.json"), { version: 4, counts: issueCounts([]), findings: [] });
   }
 
   async getInventory(auditId) {
     const manifest = await this.manifest(auditId);
-    const inventory = await readJson(insideDataRoot("audits", manifest.id, "inventory.json"), { version: 3 });
-    const diagnostics = await readJson(insideDataRoot("audits", manifest.id, "diagnostics.json"), { version: 3, diagnostics: [] });
+    const inventory = await readJson(insideDataRoot("audits", manifest.id, "inventory.json"), { version: 4 });
+    const diagnostics = await readJson(insideDataRoot("audits", manifest.id, "diagnostics.json"), { version: 4, diagnostics: [] });
     return { inventory, diagnostics };
   }
 

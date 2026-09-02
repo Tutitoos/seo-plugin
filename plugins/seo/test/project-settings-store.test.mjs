@@ -20,3 +20,13 @@ test("rechaza zonas horarias y objetivos inválidos", async () => {
   await assert.rejects(store.upsert({ id: "demo", timezone: "Mars/Olympus" }), /Timezone/);
   await assert.rejects(store.upsert({ id: "demo", targets: { score: { operator: "wat", value: 1 } } }), /Objetivo/);
 });
+
+test("conserva configuración de rastreo, idiomas, URL canónica y presupuesto Lighthouse", async () => {
+  const path = join(await mkdtemp(join(tmpdir(), "seo-projects-v4-")), "projects.json");
+  const store = new ProjectSettingsStore({ path, now: () => "2026-09-02T10:00:00.000Z" });
+  const saved = await store.upsert({ id: "demo", canonicalUrl: "https://example.com/#home", localeMap: { "/es": "es-ES", "/ca": "ca-ES" }, crawlExclusions: ["/private", "/tmp*"], lighthouseBudget: { maxPages: 4, maxRepeats: 2 } });
+  assert.equal(saved.canonicalUrl, "https://example.com/");
+  assert.deepEqual(saved.localeMap, { "/es": "es-ES", "/ca": "ca-ES" });
+  assert.deepEqual(saved.crawlExclusions, ["/private", "/tmp*"]);
+  assert.deepEqual(saved.lighthouseBudget, { maxPages: 4, maxRepeats: 2 });
+});

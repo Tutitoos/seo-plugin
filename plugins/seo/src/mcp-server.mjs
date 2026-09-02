@@ -6,12 +6,16 @@ import { ProfileStore } from "./profile-store.mjs";
 import { AuditStore } from "./audit-store.mjs";
 import { ProjectSettingsStore } from "./project-settings-store.mjs";
 import { AuditDetailStore } from "./audit-detail-store.mjs";
+import { measureAuditStorage } from "./audit-storage.mjs";
+import { AuditRunStore } from "./run-status.mjs";
+import { getAuditChanges } from "./audit-history.mjs";
 
 const server = new McpServer({ name: "seo-workspace", version: "1.0.0" });
 const profiles = new ProfileStore();
 const audits = new AuditStore();
 const projectSettings = new ProjectSettingsStore();
 const auditDetails = new AuditDetailStore();
+const auditRuns = new AuditRunStore();
 const success = (data) => ({ content: [{ type: "text", text: JSON.stringify(data, null, 2) }], structuredContent: data });
 const safely = async (fn) => { try { return success(await fn()); } catch (error) { return { isError: true, content: [{ type: "text", text: error.message || String(error) }] }; } };
 
@@ -52,6 +56,7 @@ const diagnosticSchema = z.object({ code: z.string(), stage: z.string().optional
 const pageSchema = z.object({
   url: z.string(), canonicalUrl: z.string().nullable().optional(), discoverySources: z.array(z.string()).optional(), sitemapUrls: z.array(z.string()).optional(), template: z.string().optional(), locale: z.string().optional(), depth: z.number().optional(), auditLevel: z.enum(["light", "deep"]).optional(), coverage: z.enum(["complete", "partial", "none"]).optional(), issueCounts: z.record(z.string(), z.number()).optional(), findingIds: z.array(z.string()).optional(), fetchedAt: z.string().optional(),
   response: z.record(z.string(), z.unknown()).optional(), indexability: z.record(z.string(), z.unknown()).optional(), metadata: z.record(z.string(), z.unknown()).optional(), links: z.record(z.string(), z.unknown()).optional(), images: z.record(z.string(), z.unknown()).optional(), schemas: z.record(z.string(), z.unknown()).optional(), performance: z.record(z.string(), z.unknown()).optional(), searchConsole: z.record(z.string(), z.unknown()).optional(), analytics: z.record(z.string(), z.unknown()).optional(), screenshots: z.array(z.object({ label: z.string(), path: z.string() })).optional(), diagnostics: z.array(z.record(z.string(), z.unknown())).optional(), metrics: z.record(z.string(), z.unknown()).optional(),
+  expectedLocale: z.string().optional(), declaredLocale: z.string().optional(), aliases: z.array(z.string()).optional(), healthReason: z.string().optional(), evidence: z.record(z.string(), z.unknown()).optional(),
 });
 
 server.registerTool("manage_google_profiles", {
@@ -125,6 +130,27 @@ server.registerTool("get_audit_page", {
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
 }, ({ auditId, pageId }) => safely(() => auditDetails.getPage(auditId, pageId)));
 
+server.registerTool("get_audit_storage", {
+  title: "Medir almacenamiento de auditoría",
+  description: "Mide el espacio ocupado por un snapshot y su desglose privado. La cuota fija es de 512 MB.",
+  inputSchema: { auditId: z.string() },
+  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+}, ({ auditId }) => safely(() => measureAuditStorage(auditId)));
+
+server.registerTool("get_audit_run_status", {
+  title: "Consultar estado de auditoría",
+  description: "Devuelve la fase, progreso y diagnósticos de una auditoría reanudable.",
+  inputSchema: { auditId: z.string() },
+  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+}, ({ auditId }) => safely(() => auditRuns.get(auditId)));
+
+server.registerTool("get_audit_changes", {
+  title: "Comparar auditorías",
+  description: "Compara una auditoría con el snapshot anterior del mismo proyecto por URL, incidencia y señal técnica.",
+  inputSchema: { auditId: z.string() },
+  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+}, ({ auditId }) => safely(() => getAuditChanges(auditId)));
+
 server.registerTool("manage_finding_workflow", {
   title: "Gestionar seguimiento de incidencias",
   description: "Lista, consulta o actualiza estado, responsable, fecha, notas y aceptación de riesgo sin modificar el snapshot original.",
@@ -149,12 +175,12 @@ server.registerTool("get_audit_result", {
 server.registerTool("manage_seo_project_settings", {
   title: "Gestionar objetivos SEO del proyecto",
   description: "Lista, consulta o actualiza zona horaria, moneda y objetivos privados por proyecto.",
-  inputSchema: { action: z.enum(["list", "get", "upsert"]), projectId: z.string().optional(), timezone: z.string().optional(), currency: z.string().optional(), targets: z.record(z.string(), targetSchema.nullable()).optional() },
+    inputSchema: { action: z.enum(["list", "get", "upsert"]), projectId: z.string().optional(), timezone: z.string().optional(), currency: z.string().optional(), targets: z.record(z.string(), targetSchema.nullable()).optional(), allowPrivateHosts: z.boolean().optional(), canonicalUrl: z.string().nullable().optional(), localeMap: z.record(z.string(), z.string()).optional(), crawlExclusions: z.array(z.string()).optional(), lighthouseBudget: z.object({ maxPages: z.number().int().min(0).max(10).optional(), maxRepeats: z.number().int().min(1).max(3).optional() }).optional() },
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-}, ({ action, projectId, timezone, currency, targets }) => safely(async () => {
+}, ({ action, projectId, timezone, currency, targets, allowPrivateHosts, canonicalUrl, localeMap, crawlExclusions, lighthouseBudget }) => safely(async () => {
   if (action === "list") return projectSettings.list();
   if (action === "get") return projectSettings.resolved(projectId);
-  return projectSettings.upsert({ id: projectId, timezone, currency, targets });
+  return projectSettings.upsert({ id: projectId, timezone, currency, targets, allowPrivateHosts, canonicalUrl, localeMap, crawlExclusions, lighthouseBudget });
 }));
 
 server.registerTool("get_project_history", {

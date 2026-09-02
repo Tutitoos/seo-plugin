@@ -1,16 +1,34 @@
 #!/usr/bin/env node
 import { AuditStore } from "../src/audit-store.mjs";
 import { AuditDetailStore, normalizePageUrl } from "../src/audit-detail-store.mjs";
+import { ProjectSettingsStore } from "../src/project-settings-store.mjs";
+import { writeAuditJsonAtomic } from "../src/audit-storage.mjs";
+import { getAuditChanges } from "../src/audit-history.mjs";
+import { assertWebTarget } from "../src/url-policy.mjs";
 
 const args = Object.fromEntries(process.argv.slice(2).map((item) => { const [key, ...rest] = item.replace(/^--/, "").split("="); return [key, rest.join("=") || true]; }));
 if (!args.audit || !args.url) throw new Error("Uso: node scripts/crawl-site-audit.mjs --audit=<id> --url=<https://dominio> [--max=500] [--deep=50]");
 const maxPages = Math.max(1, Math.min(500, Number(args.max) || 500));
 const maxDeep = Math.max(0, Math.min(50, Number(args.deep) || 50));
 const timeoutMs = Math.max(3000, Math.min(30000, Number(args.timeout) || 12000));
-const auditStore = new AuditStore(), detailStore = new AuditDetailStore();
+const auditStore = new AuditStore(), detailStore = new AuditDetailStore(), projectSettings = new ProjectSettingsStore();
 const current = await auditStore.get(String(args.audit));
 if (current.manifest.status === "completed") throw new Error("El snapshot está completado; crea una auditoría nueva.");
+const config = await projectSettings.resolved(current.manifest.project.slug);
+const allowPrivateHosts = args["allow-private"] === true || process.env.SEO_ALLOW_PRIVATE_HOSTS === "1" || config.allowPrivateHosts === true;
 const base = new URL(String(args.url)); base.hash = ""; base.search = "";
+const exclusions = config.crawlExclusions || [];
+const isExcluded = (url) => {
+  try {
+    const pathname = new URL(url).pathname;
+    return exclusions.some((rule) => { const normalized = String(rule).trim(); if (!normalized) return false; const prefix = normalized.endsWith("*") ? normalized.slice(0, -1) : normalized; return pathname === prefix || pathname.startsWith(prefix.endsWith("/") ? prefix : `${prefix}/`); });
+  } catch { return false; }
+};
+
+function assertFetchTarget(url) {
+  assertWebTarget(url, { allowPrivateHosts });
+}
+assertFetchTarget(base.toString());
 
 const decodeXml = (text) => text.replaceAll("&amp;", "&").replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&quot;", '"').replaceAll("&apos;", "'");
 const strip = (text) => String(text || "").replace(/<script\b[\s\S]*?<\/script>/gi, " ").replace(/<style\b[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;|&#160;/gi, " ").replace(/&amp;/gi, "&").replace(/\s+/g, " ").trim();
@@ -21,7 +39,15 @@ const absolute = (value, from = base) => { try { const url = new URL(value, from
 const fetchText = async (url, accept = "text/html,application/xml,text/plain;q=0.9") => {
   const controller = new AbortController(), timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(url, { redirect: "follow", signal: controller.signal, headers: { accept, "user-agent": "SEO-Workspace-Audit/3.0 (+local read-only audit)" } });
+    let response, currentUrl = url;
+    for (let redirect = 0; redirect <= 5; redirect += 1) {
+      assertFetchTarget(currentUrl);
+      response = await fetch(currentUrl, { redirect: "manual", signal: controller.signal, headers: { accept, "user-agent": "SEO-Workspace-Audit/4.0 (+local read-only audit)" } });
+      if (![301, 302, 303, 307, 308].includes(response.status)) break;
+      const location = response.headers.get("location");
+      if (!location) break;
+      currentUrl = new URL(location, currentUrl).toString();
+    }
     const contentType = response.headers.get("content-type") || "";
     const text = /text|json|xml|html|javascript/i.test(contentType) ? (await response.text()).slice(0, 5_000_000) : "";
     return { ok: true, response, text, contentType };
@@ -33,7 +59,7 @@ const diagnostics = [], sitemapInventory = [], sitemapMembership = new Map(), si
 const diagnostic = (code, stage, source, scope, message, retryable, completenessImpact, nextAction) => diagnostics.push({ code, stage, source, scope, message, retryable, completenessImpact, nextAction });
 function remember(url, source, sitemap = null, lastmod = null, depth = 0) {
   const resolved = absolute(url);
-  if (!resolved || !sameSite(resolved)) return;
+  if (!resolved || !sameSite(resolved) || isExcluded(resolved)) return;
   let normalized; try { normalized = normalizePageUrl(resolved); } catch { return; }
   const previous = discovered.get(normalized) || { url: normalized, sources: new Set(), sitemaps: new Set(), lastmod: null, depth };
   previous.sources.add(source); if (sitemap) previous.sitemaps.add(sitemap); if (lastmod) previous.lastmod = lastmod; previous.depth = Math.min(previous.depth, depth);
@@ -67,14 +93,27 @@ for (const sitemap of sitemapCandidates) await crawlSitemap(sitemap);
 remember(base.toString(), "seed", null, null, 0);
 
 const gscDataset = current.metrics.datasets.find((item) => item.id === "gsc-page-opportunities");
-const gscByUrl = new Map((gscDataset?.rows || []).map((row) => { try { return [normalizePageUrl(row.label), row.values]; } catch { return [row.label, row.values]; } }));
-for (const url of gscByUrl.keys()) remember(url, "search-console");
+const gscRows = (gscDataset?.rows || []).map((row) => { try { return { url: normalizePageUrl(row.label), values: row.values }; } catch { return { url: row.label, values: row.values }; } });
+for (const row of gscRows) remember(row.url, "search-console");
 const queue = [...discovered.values()].slice(0, maxPages), pages = [];
+const expectedLocaleFor = (url) => {
+  const pathname = new URL(url).pathname;
+  const configured = Object.entries(config.localeMap || {}).sort(([a], [b]) => b.length - a.length).find(([prefix]) => pathname === prefix || pathname.startsWith(prefix.endsWith("/") ? prefix : `${prefix}/`));
+  if (configured) return configured[1];
+  const segment = pathname.split("/").filter(Boolean)[0]?.toLowerCase();
+  return ["es", "ca", "en"].includes(segment) ? segment : null;
+};
+const gscForPage = (url, finalUrl, canonicalUrl) => {
+  const candidates = [url, finalUrl, canonicalUrl].filter(Boolean).map((value) => { try { return normalizePageUrl(value); } catch { return value; } });
+  for (const [index, candidate] of candidates.entries()) { const match = gscRows.find((row) => row.url === candidate); if (match) return { ...match.values, attribution: index === 0 ? "exact" : index === 1 ? "redirect" : "canonical", matchedUrl: match.url }; }
+  return {};
+};
 async function analyze(entry) {
   const result = await fetchText(entry.url), fetchedAt = new Date().toISOString();
   if (!result.ok) {
-    diagnostic("page-fetch-failed", "crawl", "crawler", entry.url, result.error?.message || "No se pudo cargar.", true, "La URL queda sin cobertura técnica.", "Reintentar el rastreo y revisar DNS, TLS o timeout.");
-    return { url: entry.url, discoverySources: [...entry.sources], sitemapUrls: [...entry.sitemaps], depth: entry.depth, auditLevel: "light", coverage: "none", response: { status: null, error: result.error?.name || "fetch-error" }, indexability: { indexable: null, reason: "Sin respuesta" }, metadata: {}, links: {}, images: {}, schemas: {}, diagnostics: [{ code: "page-fetch-failed" }] };
+    const pageDiagnostic = { code: result.error?.code === "private-host-blocked" ? "private-host-blocked" : "page-fetch-failed", stage: "crawl", source: "crawler", scope: entry.url, message: result.error?.message || "No se pudo cargar.", retryable: true, completenessImpact: "La URL queda sin cobertura técnica.", nextAction: "Reintentar el rastreo y revisar DNS, TLS, protocolo web o timeout.", attemptedAt: fetchedAt };
+    diagnostic(pageDiagnostic.code, pageDiagnostic.stage, pageDiagnostic.source, pageDiagnostic.scope, pageDiagnostic.message, pageDiagnostic.retryable, pageDiagnostic.completenessImpact, pageDiagnostic.nextAction);
+    return { url: entry.url, discoverySources: [...entry.sources], sitemapUrls: [...entry.sitemaps], depth: entry.depth, auditLevel: "light", coverage: "none", expectedLocale: expectedLocaleFor(entry.url), declaredLocale: null, healthReason: "No hay evidencia suficiente para clasificar la página.", evidence: { http: false, dom: false, screenshots: false, lighthouse: false, searchConsole: false, analytics: false }, response: { status: null, error: result.error?.name || "fetch-error" }, indexability: { indexable: null, reason: "Sin respuesta" }, metadata: {}, links: {}, images: {}, schemas: {}, diagnostics: [pageDiagnostic] };
   }
   const { response, text: html, contentType } = result, htmlPage = /html/i.test(contentType);
   const title = firstContent(html, /<title[^>]*>([\s\S]*?)<\/title>/i), descriptionTag = html.match(/<meta\b[^>]*name=["']description["'][^>]*>/i)?.[0] || html.match(/<meta\b[^>]*content=["'][^"']*["'][^>]*name=["']description["'][^>]*>/i)?.[0] || "";
@@ -90,8 +129,8 @@ async function analyze(entry) {
   for (const match of html.matchAll(/<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) { try { const value = JSON.parse(match[1]); const collect = (node) => { if (Array.isArray(node)) node.forEach(collect); else if (node && typeof node === "object") { const type = node["@type"]; if (Array.isArray(type)) schemaTypes.push(...type); else if (type) schemaTypes.push(String(type)); if (node["@graph"]) collect(node["@graph"]); } }; collect(value); } catch {} }
   const text = strip(html), soft404 = response.status === 200 && /(?:404|página no encontrada|page not found)/i.test(`${title} ${text.slice(0, 500)}`);
   for (const url of internalLinks) if (discovered.size < maxPages) remember(url, "internal-link", null, null, entry.depth + 1);
-  const canonical = canonicalUrl ? normalizePageUrl(canonicalUrl) : null, noindex = /(?:^|,)\s*noindex\b/.test(robotsMeta), indexable = response.ok && !noindex && !soft404 && htmlPage;
-  return { url: entry.url, canonicalUrl: canonical, discoverySources: [...entry.sources], sitemapUrls: [...entry.sitemaps], template: new URL(entry.url).pathname === "/" ? "home" : new URL(entry.url).pathname.split("/").filter(Boolean).length <= 1 ? "landing" : "detail", locale, depth: entry.depth, auditLevel: "light", coverage: htmlPage ? "complete" : "partial", fetchedAt, response: { status: response.status, finalUrl: response.url, redirected: response.redirected, contentType, soft404 }, indexability: { indexable, reason: !response.ok ? `HTTP ${response.status}` : noindex ? "meta robots noindex" : soft404 ? "soft 404 probable" : !htmlPage ? "No es HTML" : "Rastreable e indexable", robotsMeta, canonical: canonical || "" }, metadata: { title, titleLength: title.length, description, descriptionLength: description.length, h1Count: h1.length, h1: h1[0] || "", headings: h1.slice(0, 10), wordCount: text ? text.split(/\s+/).length : 0, hreflangCount: hreflangs.length, hreflang: hreflangs.slice(0, 30) }, links: { internalCount: internalLinks.length, externalCount: externalLinks.length, internal: internalLinks.slice(0, 100), external: externalLinks.slice(0, 50) }, images: { count: imageTags.length, missingAlt }, schemas: { count: schemaTypes.length, types: [...new Set(schemaTypes)].slice(0, 30) }, searchConsole: gscByUrl.get(entry.url) || {} };
+  const canonical = canonicalUrl ? normalizePageUrl(canonicalUrl) : null, noindex = /(?:^|,)\s*noindex\b/.test(robotsMeta), indexable = response.ok && !noindex && !soft404 && htmlPage, expectedLocale = expectedLocaleFor(entry.url), searchConsole = gscForPage(entry.url, response.url, canonical);
+  return { url: entry.url, canonicalUrl: canonical, discoverySources: [...entry.sources], sitemapUrls: [...entry.sitemaps], template: new URL(entry.url).pathname === "/" ? "home" : new URL(entry.url).pathname.split("/").filter(Boolean).length <= 1 ? "landing" : "detail", locale: expectedLocale || locale || null, expectedLocale, declaredLocale: locale || null, depth: entry.depth, auditLevel: "light", coverage: htmlPage ? "complete" : "partial", healthReason: "Cobertura HTTP y HTML disponible; se completarán las señales profundas si la URL es seleccionada.", evidence: { http: true, dom: false, screenshots: false, lighthouse: false, searchConsole: Object.keys(searchConsole).length > 0, analytics: false }, fetchedAt, response: { status: response.status, finalUrl: response.url, redirected: response.redirected, contentType, soft404 }, indexability: { indexable, reason: !response.ok ? `HTTP ${response.status}` : noindex ? "meta robots noindex" : soft404 ? "soft 404 probable" : !htmlPage ? "No es HTML" : "Rastreable e indexable", robotsMeta, canonical: canonical || "" }, metadata: { title, titleLength: title.length, description, descriptionLength: description.length, h1Count: h1.length, h1: h1[0] || "", headings: h1.slice(0, 10), wordCount: text ? text.split(/\s+/).length : 0, hreflangCount: hreflangs.length, hreflang: hreflangs.slice(0, 30) }, links: { internalCount: internalLinks.length, externalCount: externalLinks.length, internal: internalLinks.slice(0, 100), external: externalLinks.slice(0, 50) }, images: { count: imageTags.length, missingAlt }, schemas: { count: schemaTypes.length, types: [...new Set(schemaTypes)].slice(0, 30) }, searchConsole };
 }
 
 let cursor = 0;
@@ -116,13 +155,16 @@ const definitions = {
   "missing-canonical": { severity: "p2", title: "Falta canonical", explanation: "La página no declara su URL canónica.", impact: "Aumenta la ambigüedad ante parámetros o duplicados.", action: ["Añadir un canonical absoluto autorreferente.", "Comprobar que apunta a una URL 200 e indexable."], validation: "El canonical existe, es absoluto y responde 200." },
   "canonical-mismatch": { severity: "p2", title: "El canonical apunta a otra URL", explanation: "La URL rastreada consolida señales en un destino distinto.", impact: "Puede impedir que esta variante sea la elegida para indexar.", action: ["Confirmar que la consolidación es intencionada.", "Si no lo es, corregir canonical, enlaces internos y sitemap."], validation: "Canonical, enlaces y sitemap señalan la URL deseada." },
   "images-missing-alt": { severity: "p3", title: "Imágenes sin atributo alt", explanation: "Hay imágenes sin alternativa textual declarada.", impact: "Reduce accesibilidad y contexto semántico de las imágenes.", action: ["Añadir alt descriptivo a imágenes informativas.", "Usar alt vacío en imágenes puramente decorativas."], validation: "Todas las imágenes tienen un alt adecuado a su función." },
+  "locale-mismatch": { severity: "p2", title: "El idioma declarado no coincide", explanation: "La ruta o configuración del proyecto espera un idioma distinto al declarado por la página.", impact: "Puede confundir la indexación internacional y la experiencia de usuarios de otros idiomas.", action: ["Alinear html lang, ruta y contenido con el idioma esperado.", "Revisar hreflang y el mapa de idiomas del proyecto."], validation: "El idioma declarado coincide con la URL y sus alternates hreflang." },
 };
 const findings = [];
 function add(rule, page, evidence) { const item = definitions[rule]; findings.push({ ruleId: rule, scope: "page", severity: item.severity, category: "technical", title: item.title, explanation: item.explanation, evidence, impact: item.impact, affectedUrls: [page.url], source: "crawler", confidence: rule === "soft-404" ? "medium" : "high", actions: [{ title: `Corregir: ${item.title}`, why: item.impact, steps: item.action, validation: item.validation, ownerRole: rule.includes("description") || rule.includes("title") || rule.includes("h1") ? "SEO y contenido" : "Desarrollo web", effort: ["http-error", "soft-404"].includes(rule) ? "m" : "s" }] }); }
 for (const page of pages) {
   if (!page.response?.status || page.response.status >= 400) add("http-error", page, page.response?.status ? `Respuesta HTTP ${page.response.status}.` : "La petición falló sin respuesta HTTP.");
   if (page.response?.soft404) add("soft-404", page, "La respuesta es 200 y el título o contenido contiene una señal de página no encontrada.");
-  if (page.sitemapUrls.length && page.indexability?.robotsMeta?.includes("noindex")) add("noindex-sitemap", page, `Incluida en ${page.sitemapUrls.join(", ")} y robots meta=${page.indexability.robotsMeta}.`);
+  const noindex = page.indexability?.robotsMeta?.includes("noindex");
+  const noindexContradiction = noindex && (page.sitemapUrls.length > 0 || (page.links?.incomingCount || 0) > 0 || Number(page.searchConsole?.clicks || 0) > 0 || Number(page.searchConsole?.impressions || 0) > 0 || (page.canonicalUrl && page.canonicalUrl !== normalizePageUrl(page.url)));
+  if (noindexContradiction) add("noindex-sitemap", page, `noindex contradice señales de descubrimiento o rendimiento${page.sitemapUrls.length ? `; sitemap: ${page.sitemapUrls.join(", ")}` : ""}.`);
   if (page.response?.contentType?.includes("html")) {
     if (!page.metadata.title) add("missing-title", page, "No se encontró <title> en el HTML recibido.");
     if (!page.metadata.description) add("missing-description", page, "No se encontró meta description.");
@@ -131,6 +173,7 @@ for (const page of pages) {
     if (!page.canonicalUrl) add("missing-canonical", page, "No se encontró link rel=canonical válido.");
     else if (page.canonicalUrl !== normalizePageUrl(page.url)) add("canonical-mismatch", page, `Canonical declarado: ${page.canonicalUrl}.`);
     if (page.images.missingAlt > 0) add("images-missing-alt", page, `${page.images.missingAlt} de ${page.images.count} imágenes no declaran alt.`);
+    if (page.expectedLocale && page.declaredLocale && page.expectedLocale.toLowerCase() !== page.declaredLocale.toLowerCase()) add("locale-mismatch", page, `Se esperaba ${page.expectedLocale} y se declaró ${page.declaredLocale}.`);
   }
 }
 const savedFindings = await detailStore.saveFindings(current.manifest.id, findings);
@@ -142,7 +185,8 @@ for (const page of pages) {
   const related = idsByUrl.get(normalizePageUrl(page.url)) || [], counts = { p0: 0, p1: 0, p2: 0, p3: 0, info: 0 };
   for (const finding of related) counts[finding.severity]++;
   page.findingIds = related.map((item) => item.id); page.issueCounts = counts;
-  if (deep.has(page.url)) { page.auditLevel = "deep"; page.coverage = "partial"; page.diagnostics = [{ code: "deep-browser-evidence-pending", message: "La URL está seleccionada para análisis profundo; el rastreador HTTP no sustituye la fase de navegador.", completenessImpact: "La evidencia HTTP y HTML está disponible, pero faltan DOM renderizado, rendimiento o evidencia visual hasta que la orquestadora los guarde.", nextAction: "Completar la fase de navegador de /seo full y actualizar esta página con sus métricas y assets." }]; }
+  page.healthReason = counts.p0 ? "Hay al menos una incidencia P0 verificada." : counts.p1 || counts.p2 || counts.p3 ? `Hay ${counts.p1 + counts.p2 + counts.p3} incidencias P1-P3 verificadas.` : page.coverage === "none" ? "No hay evidencia suficiente para clasificar la página." : "No se han verificado incidencias en la cobertura disponible.";
+  if (deep.has(page.url)) { page.auditLevel = "deep"; page.coverage = "partial"; page.evidence = { ...(page.evidence || {}), dom: false, screenshots: false, lighthouse: false }; page.diagnostics = [...(page.diagnostics || []).filter((item) => item.code !== "deep-browser-evidence-pending"), { code: "deep-browser-evidence-pending", stage: "deep-audit", source: "browser", scope: page.url, message: "La URL está seleccionada para análisis profundo; el rastreador HTTP no sustituye la fase de navegador.", retryable: true, completenessImpact: "La evidencia HTTP y HTML está disponible, pero faltan DOM renderizado, rendimiento o evidencia visual hasta que la orquestadora los guarde.", nextAction: "Completar la fase de navegador de /seo full y actualizar esta página con sus métricas y assets.", attemptedAt: new Date().toISOString() }]; }
 }
 for (let index = 0; index < pages.length; index += 25) await detailStore.savePageBatch(current.manifest.id, pages.slice(index, index + 25));
 const resourceCandidates = ["/manifest.webmanifest", "/site.webmanifest", "/manifest.json", "/feed.xml", "/rss.xml", "/llms.txt", "/.well-known/security.txt"];
@@ -156,5 +200,8 @@ const criticalCount = savedFindings.findings.filter((item) => ["p0", "p1"].inclu
 const priorityCandidates = savedFindings.findings.slice().sort((a, b) => ["p0", "p1", "p2", "p3", "info"].indexOf(a.severity) - ["p0", "p1", "p2", "p3", "info"].indexOf(b.severity));
 const priorities = [...new Map(priorityCandidates.map((item) => [item.ruleId, item])).values()].slice(0, 5).map((item) => ({ title: item.title, why: item.impact, validation: item.actions[0]?.validation || "Repetir la auditoría.", findingId: item.id }));
 const sourceCoverage = current.manifest.sourceCoverage.map((source) => source.id === "crawl" ? { ...source, status: "available", detail: `${pages.length} URLs rastreadas desde sitemap, enlaces internos y Search Console`, updatedAt: new Date().toISOString() } : source);
-await auditStore.save({ id: current.manifest.id, title: current.manifest.title, project: current.manifest.project, status: "draft", sourceCoverage, executive: { state: `${pages.length} URLs rastreadas; ${criticalCount} incidencias críticas o altas y ${diagnostics.length} limitaciones de recopilación.`, change: "Este snapshot se migró a v3 con evidencia nueva por URL; los datos que no estaban disponibles permanecen explícitamente sin cobertura.", priorities } });
-console.log(JSON.stringify({ auditId: current.manifest.id, version: 3, pages: pages.length, deepSelected: deep.size, findings: savedFindings.findings.length, diagnostics: diagnostics.length, sitemaps: sitemapInventory.length }, null, 2));
+await auditStore.save({ id: current.manifest.id, title: current.manifest.title, project: current.manifest.project, status: "draft", sourceCoverage, executive: { state: `${pages.length} URLs rastreadas; ${criticalCount} incidencias críticas o altas y ${diagnostics.length} limitaciones de recopilación.`, change: "Este snapshot se actualizó a v4 con evidencia por URL; los datos que no estaban disponibles permanecen explícitamente sin cobertura.", priorities } });
+const changes = await getAuditChanges(current.manifest.id);
+await writeAuditJsonAtomic(current.manifest.id, "changes.json", { version: 4, updatedAt: new Date().toISOString(), ...changes });
+await detailStore.updateContent(current.manifest.id, { changes: { path: "changes.json", count: changes.pageChanges.length } });
+console.log(JSON.stringify({ auditId: current.manifest.id, version: 4, pages: pages.length, deepSelected: deep.size, findings: savedFindings.findings.length, diagnostics: diagnostics.length, sitemaps: sitemapInventory.length }, null, 2));
