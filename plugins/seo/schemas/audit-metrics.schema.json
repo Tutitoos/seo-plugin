@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Tutitoos/seo-plugin/schemas/audit-metrics.schema.json",
-  "title": "SEO Plugin audit metrics v2",
+  "title": "SEO Plugin audit metrics v2/v3",
   "type": "object",
   "required": ["version", "kpis", "datasets", "charts"],
   "properties": {
-    "version": { "const": 2 },
+    "version": { "enum": [2, 3] },
     "kpis": { "type": "array", "maxItems": 32, "items": { "type": "object" } },
     "datasets": { "type": "array", "maxItems": 32, "items": { "type": "object", "required": ["id", "type", "source", "granularity", "series", "rows"], "properties": { "id": { "type": "string" }, "type": { "enum": ["timeseries", "categorical", "matrix"] }, "title": { "type": "string" }, "source": { "type": "string" }, "granularity": { "enum": ["day", "week", "month", "snapshot", "none"] }, "series": { "type": "array", "minItems": 1, "maxItems": 12 }, "rows": { "type": "array", "minItems": 1, "maxItems": 2500 } }, "additionalProperties": false } },
     "charts": { "type": "array", "maxItems": 24, "items": { "type": "object", "required": ["id", "title", "type", "section", "engine", "datasetId", "seriesKeys"], "properties": { "id": { "type": "string" }, "title": { "type": "string" }, "type": { "enum": ["line", "area", "bar", "stacked-bar", "donut", "scatter", "heatmap"] }, "description": { "type": "string" }, "section": { "enum": ["summary", "visibility", "traffic", "local", "technical", "content"] }, "engine": { "enum": ["native", "echarts"] }, "datasetId": { "type": "string" }, "seriesKeys": { "type": "array", "items": { "type": "string" } }, "compareMode": { "enum": ["none", "previous-period"] }, "annotations": { "type": "array", "maxItems": 20 } }, "additionalProperties": false } }

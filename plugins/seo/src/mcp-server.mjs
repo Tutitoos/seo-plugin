@@ -5,11 +5,13 @@ import { z } from "zod";
 import { ProfileStore } from "./profile-store.mjs";
 import { AuditStore } from "./audit-store.mjs";
 import { ProjectSettingsStore } from "./project-settings-store.mjs";
+import { AuditDetailStore } from "./audit-detail-store.mjs";
 
 const server = new McpServer({ name: "seo-workspace", version: "1.0.0" });
 const profiles = new ProfileStore();
 const audits = new AuditStore();
 const projectSettings = new ProjectSettingsStore();
+const auditDetails = new AuditDetailStore();
 const success = (data) => ({ content: [{ type: "text", text: JSON.stringify(data, null, 2) }], structuredContent: data });
 const safely = async (fn) => { try { return success(await fn()); } catch (error) { return { isError: true, content: [{ type: "text", text: error.message || String(error) }] }; } };
 
@@ -41,6 +43,16 @@ const chartSchema = z.object({
   section: z.enum(["summary", "visibility", "traffic", "local", "technical", "content"]).optional(), datasetId: z.string(), seriesKeys: z.array(z.string()).optional(), compareMode: z.enum(["none", "previous-period"]).optional(),
   annotations: z.array(z.object({ date: z.string().optional(), label: z.string(), type: z.enum(["audit", "change", "warning"]).optional() })).optional(),
 });
+const actionSchema = z.object({ title: z.string(), why: z.string(), steps: z.array(z.string()).optional(), validation: z.string(), ownerRole: z.string().optional(), effort: z.enum(["xs", "s", "m", "l", "xl"]).optional() });
+const findingSchema = z.object({
+  id: z.string().optional(), ruleId: z.string(), scope: z.enum(["global", "page", "resource"]).optional(), severity: z.enum(["p0", "p1", "p2", "p3", "info"]), category: z.string().optional(),
+  title: z.string(), explanation: z.string(), evidence: z.string(), impact: z.string(), affectedUrls: z.array(z.string()).optional(), resources: z.array(z.string()).optional(), source: z.string(), confidence: z.enum(["high", "medium", "low"]).optional(), actions: z.array(actionSchema).optional(), observedAt: z.string().optional(),
+});
+const diagnosticSchema = z.object({ code: z.string(), stage: z.string().optional(), source: z.string(), scope: z.string().optional(), message: z.string(), retryable: z.boolean().optional(), completenessImpact: z.string(), nextAction: z.string(), attemptedAt: z.string().optional() });
+const pageSchema = z.object({
+  url: z.string(), canonicalUrl: z.string().nullable().optional(), discoverySources: z.array(z.string()).optional(), sitemapUrls: z.array(z.string()).optional(), template: z.string().optional(), locale: z.string().optional(), depth: z.number().optional(), auditLevel: z.enum(["light", "deep"]).optional(), coverage: z.enum(["complete", "partial", "none"]).optional(), issueCounts: z.record(z.string(), z.number()).optional(), findingIds: z.array(z.string()).optional(), fetchedAt: z.string().optional(),
+  response: z.record(z.string(), z.unknown()).optional(), indexability: z.record(z.string(), z.unknown()).optional(), metadata: z.record(z.string(), z.unknown()).optional(), links: z.record(z.string(), z.unknown()).optional(), images: z.record(z.string(), z.unknown()).optional(), schemas: z.record(z.string(), z.unknown()).optional(), performance: z.record(z.string(), z.unknown()).optional(), searchConsole: z.record(z.string(), z.unknown()).optional(), analytics: z.record(z.string(), z.unknown()).optional(), screenshots: z.array(z.object({ label: z.string(), path: z.string() })).optional(), diagnostics: z.array(z.record(z.string(), z.unknown())).optional(), metrics: z.record(z.string(), z.unknown()).optional(),
+});
 
 server.registerTool("manage_google_profiles", {
   title: "Gestionar perfiles Google",
@@ -69,7 +81,7 @@ server.registerTool("save_audit_result", {
     project: z.object({ slug: z.string(), name: z.string().min(1) }),
     profileId: z.string().optional(), auditType: z.string().optional(),
     status: z.enum(["draft", "completed", "failed"]).optional(), score: z.number().min(0).max(100).nullable().optional(),
-    summary: z.string().optional(), skillsUsed: z.array(z.string()).optional(), tags: z.array(z.string()).optional(),
+    summary: z.string().optional(), executive: z.object({ state: z.string().optional(), change: z.string().optional(), priorities: z.array(z.object({ title: z.string(), why: z.string(), validation: z.string(), findingId: z.string().nullable().optional() })).max(5).optional() }).optional(), skillsUsed: z.array(z.string()).optional(), tags: z.array(z.string()).optional(),
     periods: z.object({ primary: periodSchema.optional(), comparison: periodSchema.optional(), history: periodSchema.optional() }).optional(),
     sourceCoverage: z.array(z.object({ id: z.string(), label: z.string(), status: z.enum(["available", "partial", "unavailable"]), detail: z.string().optional(), updatedAt: z.string().nullable().optional() })).optional(),
     kpis: z.array(kpiSchema).optional(), datasets: z.array(datasetSchema).optional(), charts: z.array(chartSchema).optional(),
@@ -77,6 +89,48 @@ server.registerTool("save_audit_result", {
   },
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
 }, (input) => safely(() => audits.save(input)));
+
+server.registerTool("save_audit_findings", {
+  title: "Guardar hallazgos estructurados",
+  description: "Guarda el conjunto completo de hallazgos de un snapshot draft y sincroniza su seguimiento persistente por proyecto.",
+  inputSchema: { auditId: z.string(), findings: z.array(findingSchema).max(1000) },
+  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+}, ({ auditId, findings }) => safely(() => auditDetails.saveFindings(auditId, findings)));
+
+server.registerTool("save_audit_inventory", {
+  title: "Guardar inventario técnico",
+  description: "Guarda sitemaps, robots, manifests, feeds, archivos para agentes, schema, recursos críticos y diagnósticos de recopilación.",
+  inputSchema: { auditId: z.string(), inventory: z.record(z.string(), z.unknown()), diagnostics: z.array(diagnosticSchema).max(500).optional() },
+  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+}, ({ auditId, inventory, diagnostics }) => safely(() => auditDetails.saveInventory(auditId, inventory, diagnostics)));
+
+server.registerTool("save_audit_page_batch", {
+  title: "Guardar lote de páginas auditadas",
+  description: "Guarda entre 1 y 25 páginas; el snapshot admite hasta 500 páginas ligeras y 50 profundas.",
+  inputSchema: { auditId: z.string(), pages: z.array(pageSchema).min(1).max(25) },
+  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+}, ({ auditId, pages }) => safely(() => auditDetails.savePageBatch(auditId, pages)));
+
+server.registerTool("list_audit_pages", {
+  title: "Listar páginas de una auditoría",
+  description: "Lista y pagina URLs con filtros de sitemap, plantilla, idioma, indexabilidad, cobertura y salud.",
+  inputSchema: { auditId: z.string(), query: z.string().optional(), sitemap: z.string().optional(), template: z.string().optional(), locale: z.string().optional(), indexability: z.enum(["indexable", "blocked"]).optional(), coverage: z.enum(["complete", "partial", "none"]).optional(), health: z.enum(["critical", "issues", "healthy", "unknown"]).optional(), sort: z.enum(["url", "status", "health", "clicks", "sessions"]).optional(), order: z.enum(["asc", "desc"]).optional(), offset: z.number().int().min(0).optional(), limit: z.number().int().min(1).max(100).optional() },
+  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+}, ({ auditId, ...filters }) => safely(() => auditDetails.listPages(auditId, filters)));
+
+server.registerTool("get_audit_page", {
+  title: "Consultar detalle de una página",
+  description: "Devuelve evidencia, métricas, capturas y hallazgos relacionados de una URL auditada.",
+  inputSchema: { auditId: z.string(), pageId: z.string() },
+  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+}, ({ auditId, pageId }) => safely(() => auditDetails.getPage(auditId, pageId)));
+
+server.registerTool("manage_finding_workflow", {
+  title: "Gestionar seguimiento de incidencias",
+  description: "Lista, consulta o actualiza estado, responsable, fecha, notas y aceptación de riesgo sin modificar el snapshot original.",
+  inputSchema: { action: z.enum(["list", "get", "update"]), projectId: z.string(), fingerprint: z.string().optional(), status: z.enum(["pending", "in_progress", "resolved", "accepted"]).optional(), owner: z.string().optional(), dueDate: z.string().nullable().optional(), note: z.string().optional(), acceptanceReason: z.string().optional() },
+  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+}, (input) => safely(() => auditDetails.manageWorkflow(input)));
 
 server.registerTool("list_audit_results", {
   title: "Listar auditorías",

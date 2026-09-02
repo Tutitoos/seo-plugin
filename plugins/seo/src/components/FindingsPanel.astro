@@ -1,0 +1,51 @@
+---
+// @ts-nocheck -- Los datos proceden del AuditDetailStore validado.
+const { findings = [], projectId, csrfToken, returnTo } = Astro.props;
+const severityLabel = { p0: "P0 · Bloqueante", p1: "P1 · Alta", p2: "P2 · Media", p3: "P3 · Baja", info: "Positivo / informativo" };
+const statusLabel = { pending: "Pendiente", in_progress: "En curso", resolved: "Resuelta", accepted: "Riesgo aceptado" };
+const categories = [...new Set(findings.map((item) => item.category).filter(Boolean))];
+const sources = [...new Set(findings.map((item) => item.source).filter(Boolean))];
+const owners = [...new Set(findings.map((item) => item.workflow?.owner).filter(Boolean))];
+---
+<div class="finding-toolbar panel">
+  <label class="field"><span class="field-label">Buscar</span><input type="search" data-finding-query placeholder="Problema, evidencia o URL…" /></label>
+  <label class="field"><span class="field-label">Prioridad</span><select data-finding-severity><option value="">Todas</option>{Object.entries(severityLabel).map(([value,label]) => <option value={value}>{label}</option>)}</select></label>
+  <label class="field"><span class="field-label">Estado</span><select data-finding-status><option value="">Todos</option>{Object.entries(statusLabel).map(([value,label]) => <option value={value}>{label}</option>)}</select></label>
+  <label class="field"><span class="field-label">Categoría</span><select data-finding-category><option value="">Todas</option>{categories.map((value) => <option value={value}>{value}</option>)}</select></label>
+  <label class="field"><span class="field-label">Fuente</span><select data-finding-source><option value="">Todas</option>{sources.map((value) => <option value={value}>{value}</option>)}</select></label>
+  <label class="field"><span class="field-label">Responsable</span><select data-finding-owner><option value="">Todos</option>{owners.map((value) => <option value={value}>{value}</option>)}</select></label>
+</div>
+<div class="finding-list" data-finding-list>
+  {findings.map((finding) => <article class={`finding finding-${finding.severity}`} data-finding data-severity={finding.severity} data-status={finding.workflow?.status || "pending"} data-category={finding.category} data-source={finding.source} data-owner={finding.workflow?.owner || ""} data-search={`${finding.title} ${finding.explanation} ${finding.evidence} ${finding.affectedUrls?.join(" ")}`.toLowerCase()}>
+    <header><div><span class="pill">{severityLabel[finding.severity]}</span><h3>{finding.title}</h3></div><span class={`workflow-badge workflow-${finding.workflow?.status || "pending"}`}>{statusLabel[finding.workflow?.status || "pending"]}</span></header>
+    <div class="finding-reading"><div><span>Qué ocurre</span><p>{finding.explanation}</p></div><div><span>Por qué importa</span><p>{finding.impact}</p></div></div>
+    <details class="finding-evidence" open={finding.severity === "p0"}><summary>Evidencia y alcance</summary><p>{finding.evidence}</p>{finding.affectedUrls?.length > 0 && <ul>{finding.affectedUrls.slice(0, 20).map((url) => <li><code>{url}</code></li>)}</ul>}{finding.affectedUrls?.length > 20 && <p class="muted">+{finding.affectedUrls.length - 20} URLs adicionales</p>}</details>
+    {finding.actions?.map((action, index) => <section class="remediation"><div class="remediation-head"><span>Acción {index + 1}</span><strong>{action.title}</strong><i>{action.effort.toUpperCase()}</i></div><p>{action.why}</p>{action.steps?.length > 0 && <ol>{action.steps.map((step) => <li>{step}</li>)}</ol>}<div class="validation"><span>Cómo verificarlo</span><p>{action.validation}</p></div><small>Responsable sugerido: {action.ownerRole || "Por asignar"}</small></section>)}
+    {finding.workflow && <details class="workflow-editor"><summary>Gestionar incidencia</summary><form method="post" action={`/api/projects/${projectId}/issues/${finding.fingerprint}`}>
+      <input type="hidden" name="csrf" value={csrfToken} /><input type="hidden" name="returnTo" value={returnTo} />
+      <label class="field"><span class="field-label">Estado</span><select name="status">{Object.entries(statusLabel).map(([value,label]) => <option value={value} selected={finding.workflow.status === value}>{label}</option>)}</select></label>
+      <label class="field"><span class="field-label">Responsable</span><input name="owner" value={finding.workflow.owner} placeholder="Equipo o persona" /></label>
+      <label class="field"><span class="field-label">Fecha objetivo</span><input type="date" name="dueDate" value={finding.workflow.dueDate || ""} /></label>
+      <label class="field workflow-wide"><span class="field-label">Motivo de aceptación</span><textarea name="acceptanceReason" rows="2">{finding.workflow.acceptanceReason}</textarea></label>
+      <label class="field workflow-wide"><span class="field-label">Añadir nota</span><textarea name="note" rows="2" placeholder="Contexto, enlace o resultado de la corrección"></textarea></label>
+      <button type="submit">Guardar seguimiento</button>
+    </form></details>}
+  </article>)}
+  {findings.length === 0 && <div class="panel tab-empty"><strong>Este snapshot no contiene hallazgos estructurados.</strong><p>El informe Markdown continúa disponible; una nueva ejecución v3 añadirá explicaciones, acciones y seguimiento.</p></div>}
+</div>
+<p class="panel tab-empty" data-finding-empty hidden>No hay incidencias que coincidan con estos filtros.</p>
+
+<script>
+  const applyFindingFilters = () => {
+    const query = (document.querySelector<HTMLInputElement>("[data-finding-query]")?.value || "").trim().toLowerCase();
+    const severity = document.querySelector<HTMLSelectElement>("[data-finding-severity]")?.value || "";
+    const status = document.querySelector<HTMLSelectElement>("[data-finding-status]")?.value || "";
+    const category = document.querySelector<HTMLSelectElement>("[data-finding-category]")?.value || "";
+    const source = document.querySelector<HTMLSelectElement>("[data-finding-source]")?.value || "";
+    const owner = document.querySelector<HTMLSelectElement>("[data-finding-owner]")?.value || "";
+    let visible = 0;
+    document.querySelectorAll<HTMLElement>("[data-finding]").forEach((card) => { const show = (!query || card.dataset.search?.includes(query)) && (!severity || card.dataset.severity === severity) && (!status || card.dataset.status === status) && (!category || card.dataset.category === category) && (!source || card.dataset.source === source) && (!owner || card.dataset.owner === owner); card.hidden = !show; if (show) visible += 1; });
+    const empty = document.querySelector<HTMLElement>("[data-finding-empty]"); if (empty) empty.hidden = visible > 0;
+  };
+  document.querySelectorAll("[data-finding-query],[data-finding-severity],[data-finding-status],[data-finding-category],[data-finding-source],[data-finding-owner]").forEach((control) => control.addEventListener("input", applyFindingFilters));
+</script>

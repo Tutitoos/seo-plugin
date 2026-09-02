@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Tutitoos/seo-plugin/schemas/issue-tracker.schema.json",
+  "title": "Persistent SEO issue tracker v3",
+  "type": "object",
+  "required": ["version", "projectId", "issues"],
+  "properties": { "version": { "const": 3 }, "projectId": { "type": "string" }, "updatedAt": { "type": ["string", "null"], "format": "date-time" }, "issues": { "type": "array", "items": { "type": "object", "required": ["fingerprint", "ruleId", "status", "firstSeenAt", "detected"], "properties": { "fingerprint": { "type": "string" }, "ruleId": { "type": "string" }, "status": { "enum": ["pending", "in_progress", "resolved", "accepted"] }, "owner": { "type": "string" }, "dueDate": { "type": ["string", "null"], "format": "date" }, "acceptanceReason": { "type": "string" }, "detected": { "type": "boolean" }, "verification": { "enum": ["unverified", "awaiting_verification", "verified", "reopened"] } }, "additionalProperties": true } } },
+  "additionalProperties": false
+}

@@ -197,6 +197,17 @@ function normalizeCoverage(value, previous = []) {
   return value.map((item, index) => ({ id: safeId(item.id, `sourceCoverage[${index}].id`), label: text(item.label, "sourceCoverage.label", 80, true), status: ["available", "partial", "unavailable"].includes(item.status) ? item.status : "unavailable", detail: text(item.detail, "sourceCoverage.detail", 180), updatedAt: item.updatedAt || null }));
 }
 
+function normalizeExecutive(value, previous = {}) {
+  if (value === undefined) return previous || {};
+  const priorities = Array.isArray(value.priorities) ? value.priorities.slice(0, 5).map((item, index) => ({
+    title: text(item.title, `executive.priorities[${index}].title`, 140, true),
+    why: text(item.why, `executive.priorities[${index}].why`, 400, true),
+    validation: text(item.validation, `executive.priorities[${index}].validation`, 400, true),
+    findingId: item.findingId ? safeId(item.findingId, `executive.priorities[${index}].findingId`) : null,
+  })) : [];
+  return { state: text(value.state, "executive.state", 600), change: text(value.change, "executive.change", 600), priorities };
+}
+
 export class AuditStore {
   constructor({ settings = new ProjectSettingsStore(), now = () => new Date().toISOString() } = {}) { this.settings = settings; this.now = now; }
 
@@ -213,7 +224,7 @@ export class AuditStore {
     await mkdir(folder, { recursive: true, mode: 0o700 });
     const previous = await readJson(manifestPath, {});
     if (previous.status === "completed") throw new Error(`La auditoría ${id} está completada y es inmutable. Crea un nuevo snapshot.`);
-    const previousMetrics = previous.version === 2 ? await readJson(metricsPath, { version: 2, kpis: [], datasets: [], charts: [] }) : legacyMetrics(previous);
+    const previousMetrics = previous.version >= 2 ? await readJson(metricsPath, { version: previous.version, kpis: [], datasets: [], charts: [] }) : legacyMetrics(previous);
     const project = { slug: projectSlug, name: text(input.project?.name || previous.project?.name, "project.name", 120, true) };
     const settings = await this.settings.resolved(project.slug);
     let datasets;
@@ -222,21 +233,22 @@ export class AuditStore {
     else if (chartsInput?.some((chart) => !chart.datasetId)) {
       const converted = legacyCharts(chartsInput); datasets = converted.datasets.map(normalizeDataset); chartsInput = converted.charts;
     } else datasets = previousMetrics.datasets || [];
-    const metrics = { version: 2, kpis: normalizeKpis(input.kpis, previousMetrics.kpis, settings), datasets, charts: normalizeCharts(chartsInput, datasets, previousMetrics.charts) };
+    const metrics = { version: 3, kpis: normalizeKpis(input.kpis, previousMetrics.kpis, settings), datasets, charts: normalizeCharts(chartsInput, datasets, previousMetrics.charts) };
     const status = input.status || previous.status || "completed";
     if (!STATUSES.has(status)) throw new Error("status debe ser draft, completed o failed.");
     const score = input.score ?? previous.score ?? null;
     if (score !== null && (!Number.isFinite(score) || score < 0 || score > 100)) throw new Error("score debe estar entre 0 y 100.");
     const now = this.now();
     const manifest = {
-      version: 2, id, title: text(input.title || previous.title, "title", 180, true), project,
+      version: 3, id, title: text(input.title || previous.title, "title", 180, true), project,
       profileId: input.profileId ? safeId(input.profileId, "profileId") : previous.profileId || null,
       auditType: safeId(input.auditType || previous.auditType || "seo-full", "auditType"), status, score,
       summary: text(input.summary ?? previous.summary, "summary", 500),
+      executive: normalizeExecutive(input.executive, previous.executive),
       periods: { primary: period(input.periods?.primary, "periods.primary") || previous.periods?.primary || null, comparison: period(input.periods?.comparison, "periods.comparison") || previous.periods?.comparison || null, history: period(input.periods?.history, "periods.history") || previous.periods?.history || null },
       sourceCoverage: normalizeCoverage(input.sourceCoverage, previous.sourceCoverage || []),
       skillsUsed: [...new Set(input.skillsUsed || previous.skillsUsed || [])].map((item) => safeId(item, "skill")),
-      tags: [...new Set(input.tags || previous.tags || [])].map((item) => text(item, "tag", 60)).filter(Boolean), artifacts: previous.artifacts || [],
+      tags: [...new Set(input.tags || previous.tags || [])].map((item) => text(item, "tag", 60)).filter(Boolean), artifacts: previous.artifacts || [], content: previous.content || {},
       metrics: { path: "metrics.json", kpiCount: metrics.kpis.length, datasetCount: metrics.datasets.length, chartCount: metrics.charts.length },
       createdAt: previous.createdAt || now, updatedAt: now, completedAt: status === "completed" ? now : null,
     };
@@ -279,7 +291,7 @@ export class AuditStore {
     id = safeId(id, "auditId");
     const manifest = await readJson(insideDataRoot("audits", id, "manifest.json"), null);
     if (!manifest) throw new Error(`No existe la auditoría ${id}.`);
-    const metrics = manifest.version === 2 ? await readJson(insideDataRoot("audits", id, "metrics.json"), { version: 2, kpis: [], datasets: [], charts: [] }) : legacyMetrics(manifest);
+    const metrics = manifest.version >= 2 ? await readJson(insideDataRoot("audits", id, "metrics.json"), { version: manifest.version, kpis: [], datasets: [], charts: [] }) : legacyMetrics(manifest);
     let reportMarkdown = "";
     try { reportMarkdown = await readFile(insideDataRoot("audits", id, "report.md"), "utf8"); } catch (error) { if (error?.code !== "ENOENT") throw error; }
     return { manifest, metrics, reportMarkdown };

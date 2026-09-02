@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Tutitoos/seo-plugin/schemas/audit-inventory.schema.json",
+  "title": "SEO technical inventory v3",
+  "type": "object",
+  "required": ["version"],
+  "properties": { "version": { "const": 3 }, "updatedAt": { "type": "string", "format": "date-time" }, "sitemaps": { "type": "array", "maxItems": 100 }, "robots": { "type": "object" }, "manifest": { "type": ["object", "null"] }, "feeds": { "type": "array" }, "agentFiles": { "type": "array" }, "schema": { "type": "array" }, "criticalResources": { "type": "array" } },
+  "additionalProperties": true
+}

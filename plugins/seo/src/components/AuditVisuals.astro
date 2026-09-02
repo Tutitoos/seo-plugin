@@ -1,14 +1,19 @@
 ---
 // @ts-nocheck -- Los payloads están validados por AuditStore antes de llegar al renderer.
+import FindingsPanel from "./FindingsPanel.astro";
+import InventoryPanel from "./InventoryPanel.astro";
+import PageTable from "./PageTable.astro";
 type AnyItem = Record<string, any>;
-const { auditId, metrics, coverage = [], history = [] } = Astro.props as { auditId: string; metrics: AnyItem; coverage?: AnyItem[]; history?: AnyItem[] };
+const { auditId, projectId, metrics, coverage = [], history = [], executive = {}, findings = [], pagesResult = { pages: [], total: 0 }, inventory = {}, diagnostics = [], csrfToken = "", returnTo = "", mode = "audit" } = Astro.props as AnyItem;
 const kpis: AnyItem[] = metrics?.kpis || [];
 const datasets: AnyItem[] = metrics?.datasets || [];
 const charts: AnyItem[] = metrics?.charts || [];
-const sections = [
-  ["summary", "Resumen"], ["visibility", "Visibilidad"], ["traffic", "Tráfico"],
-  ["local", "Local"], ["technical", "Técnico"], ["content", "Contenido"],
+const auditSections = [
+  ["summary", "Resumen"], ["findings", "Hallazgos"], ["pages", "Páginas"], ["visibility", "Visibilidad"], ["traffic", "Tráfico"],
+  ["local", "Local"], ["technical", "Técnico"], ["content", "Contenido"], ["inventory", "Inventario"],
 ];
+const sections = mode === "page" ? [["summary", "Resumen"], ["visibility", "Search Console"], ["traffic", "Analytics"], ["technical", "Rendimiento"]] : auditSections;
+const chartSections = new Set(["visibility", "traffic", "local", "technical", "content"]);
 const datasetFor = (chart: AnyItem) => datasets.find((dataset) => dataset.id === chart.datasetId);
 const chartsFor = (section: string) => charts.filter((chart) => chart.section === section);
 const palette: Record<string, string> = { lime: "var(--lime)", blue: "var(--blue)", orange: "var(--orange)", green: "var(--green)", red: "var(--red)", ink: "var(--ink)" };
@@ -48,6 +53,11 @@ const donutStyle = (dataset: AnyItem, key: string) => {
 
   {sections.map(([section, label], sectionIndex) => <section class="audit-tab-panel" data-panel={section} hidden={sectionIndex !== 0} aria-label={label}>
     {section === "summary" && <>
+      <div class="executive-reading">
+        <article><span>Estado actual</span><h2>Qué debes saber ahora</h2><p>{executive.state || "La auditoría conserva su resumen original. Ejecuta de nuevo `/seo full` para generar una lectura ejecutiva estructurada."}</p></article>
+        <article><span>Evolución</span><h2>Qué ha cambiado</h2><p>{executive.change || (history.length > 1 ? "Consulta los snapshots para comparar la evolución del proyecto." : "Todavía no existe un snapshot anterior comparable.")}</p></article>
+      </div>
+      {executive.priorities?.length > 0 && <><div class="section-head compact"><div><p class="eyebrow">Siguiente movimiento</p><h2>Acciones prioritarias</h2></div><span class="muted">máximo 5</span></div><ol class="priority-list">{executive.priorities.map((item, index) => <li><span>{String(index + 1).padStart(2,"0")}</span><div><strong>{item.title}</strong><p>{item.why}</p><small>Validación: {item.validation}</small></div></li>)}</ol></>}
       <div class="section-head"><div><p class="eyebrow">Lectura ejecutiva</p><h2>KPIs principales</h2></div><span class="muted">{kpis.length} indicadores verificados</span></div>
       <div class="kpi-grid">
         {kpis.map((kpi) => <article class={`kpi kpi-${kpi.sentiment}`}>
@@ -64,7 +74,11 @@ const donutStyle = (dataset: AnyItem, key: string) => {
       {history.length > 0 && <><div class="section-head compact"><div><p class="eyebrow">Snapshots</p><h2>Evolución del proyecto</h2></div><span class="muted">{history.length} auditorías</span></div><div class="snapshot-strip">{history.map((snapshot) => <a href={`/audits/${snapshot.id}`}><span>{snapshot.createdAt.slice(0, 10)}</span><strong>{snapshot.score ?? "—"}</strong><small>{snapshot.status}</small></a>)}</div></>}
     </>}
 
-    {chartsFor(section).length > 0 && <div class="section-head"><div><p class="eyebrow">Datos y decisiones</p><h2>{label}</h2></div><span class="muted">{chartsFor(section).length} gráficas</span></div>}
+    {section === "findings" && <><div class="section-head"><div><p class="eyebrow">Problema → acción → verificación</p><h2>Hallazgos</h2></div><span class="muted">{findings.length} incidencias</span></div><FindingsPanel findings={findings} projectId={projectId} csrfToken={csrfToken} returnTo={returnTo} /></>}
+    {section === "pages" && <><div class="section-head"><div><p class="eyebrow">Inventario rastreado</p><h2>Páginas</h2></div><span class="muted">{pagesResult.total} URLs</span></div><PageTable auditId={auditId} pages={pagesResult.pages.slice(0, 20)} total={pagesResult.total} compact={true} /></>}
+    {section === "inventory" && <><div class="section-head"><div><p class="eyebrow">Superficie técnica pública</p><h2>Inventario</h2></div></div><InventoryPanel inventory={inventory} diagnostics={diagnostics} /></>}
+
+    {chartSections.has(section) && chartsFor(section).length > 0 && <div class="section-head"><div><p class="eyebrow">Datos y decisiones</p><h2>{label}</h2></div><span class="muted">{chartsFor(section).length} gráficas</span></div>}
     <div class="chart-grid">
       {chartsFor(section).map((chart) => {
         const dataset = datasetFor(chart);
@@ -80,7 +94,7 @@ const donutStyle = (dataset: AnyItem, key: string) => {
         </article>;
       })}
     </div>
-    {section !== "summary" && chartsFor(section).length === 0 && <div class="panel tab-empty"><strong>Sin datos de {label.toLowerCase()}.</strong><p>Esta fuente no estaba disponible en el snapshot; no se han creado gráficas de relleno.</p></div>}
+    {chartSections.has(section) && chartsFor(section).length === 0 && <div class="panel tab-empty"><strong>Sin datos de {label.toLowerCase()}.</strong><p>Esta fuente no estaba disponible en el snapshot; no se han creado gráficas de relleno.</p></div>}
   </section>)}
 </section>}
 

@@ -1,6 +1,6 @@
 {
   "name": "@tutitoos/seo-codex-plugin",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,6 +10,8 @@
     "start": "HOST=127.0.0.1 PORT=4321 node dist/server/entry.mjs",
     "check": "astro check && node scripts/check-syntax.mjs && node scripts/validate-links.mjs",
     "smoke:tools": "node scripts/smoke-tools.mjs",
+    "crawl:audit": "node scripts/crawl-site-audit.mjs",
+    "attach:evidence": "node scripts/attach-page-evidence.mjs",
     "test": "node --test test/*.test.mjs integrations/*/test/*.test.mjs",
     "validate": "npm run check && npm test && npm run smoke:tools && npm run build"
   },
@@ -26,6 +28,7 @@
   },
   "devDependencies": {
     "@astrojs/check": "0.9.10",
+    "@types/node": "^22.15.3",
     "@types/sanitize-html": "^2.16.0",
     "typescript": "^5.9.3"
   }

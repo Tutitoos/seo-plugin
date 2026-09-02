@@ -1,0 +1,28 @@
+---
+// @ts-nocheck
+const { auditId, pages = [], total = pages.length, compact = false } = Astro.props;
+const healthLabel = { critical: "Crítica", issues: "Con problemas", healthy: "Correcta", unknown: "Sin cobertura" };
+---
+<div class="table-tools" data-table-tools>
+  <button type="button" class="secondary-button" data-density aria-pressed="false">Vista compacta</button>
+  <details><summary>Columnas</summary><div>{[[5,"Plantilla"],[6,"Idioma"],[7,"Auditoría"],[8,"P0"],[9,"P1"],[10,"P2"],[11,"Clics"]].map(([index,label]) => <label><input type="checkbox" checked data-column={index} /> {label}</label>)}</div></details>
+</div>
+<div class="page-table-wrap">
+  <table class="page-table" data-page-table>
+    <thead><tr><th>URL</th><th>Salud</th><th>HTTP</th><th>Indexable</th><th>Plantilla</th><th>Idioma</th><th>Auditoría</th><th>P0</th><th>P1</th><th>P2</th><th>Clics</th></tr></thead>
+    <tbody>{pages.map((page) => <tr class={`row-${page.health}`}>
+      <th><a href={`/audits/${auditId}/pages/${page.id}`}>{page.title || new URL(page.url).pathname}</a><small>{page.url}</small></th>
+      <td><span class={`health health-${page.health}`}>{healthLabel[page.health]}</span></td><td class="numeric">{page.status ?? "—"}</td><td>{page.indexable === true ? "Sí" : page.indexable === false ? "No" : "—"}</td>
+      <td>{page.template || "—"}</td><td>{page.locale || "—"}</td><td>{page.auditLevel === "deep" ? "Profunda" : "Ligera"}</td><td class="numeric">{page.issueCounts?.p0 || 0}</td><td class="numeric">{page.issueCounts?.p1 || 0}</td><td class="numeric">{page.issueCounts?.p2 || 0}</td><td class="numeric">{page.clicks ?? "—"}</td>
+    </tr>)}</tbody>
+  </table>
+</div>
+{pages.length === 0 && <div class="panel tab-empty"><strong>No hay páginas para estos filtros.</strong><p>Prueba otra combinación o ejecuta el rastreo v3.</p></div>}
+{compact && total > pages.length && <a class="text-link" href={`/audits/${auditId}/pages`}>Ver las {total} páginas auditadas →</a>}
+
+<script>
+  const table = document.querySelector<HTMLTableElement>("[data-page-table]");
+  const density = document.querySelector<HTMLButtonElement>("[data-density]");
+  density?.addEventListener("click", () => { const compact = table?.classList.toggle("is-compact") || false; density.setAttribute("aria-pressed", String(compact)); density.textContent = compact ? "Vista cómoda" : "Vista compacta"; });
+  document.querySelectorAll<HTMLInputElement>("[data-column]").forEach((input) => input.addEventListener("change", () => { const index = Number(input.dataset.column); table?.querySelectorAll<HTMLElement>(`tr > :nth-child(${index})`).forEach((cell) => { cell.hidden = !input.checked; }); }));
+</script>

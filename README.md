@@ -10,7 +10,7 @@ Abre una tarea nueva y ejecuta:
 /seo full https://example.com proyecto=MiProyecto profileId=mi-perfil
 ```
 
-La skill `seo` coordina el análisis técnico, las skills especializadas, Search Console, Analytics y Business Profile, y guarda el informe en el dashboard privado. El modo completo captura 90 días diarios frente a los 90 anteriores, hasta 12 meses de tendencia, KPIs comparativos, snapshots, gráficas por fuente disponible, tablas accesibles, PNG/CSV y un plan medible. También puede invocarse como `$seo full`.
+La skill `seo` coordina el análisis técnico, las skills especializadas, Search Console, Analytics y Business Profile, y guarda el informe en el dashboard privado. El modo completo captura 90 días diarios frente a los 90 anteriores, hasta 12 meses de tendencia, KPIs comparativos, snapshots, gráficas por fuente disponible, tablas accesibles, PNG/CSV y un plan medible. Rastrea hasta 500 URLs y selecciona hasta 50 páginas para diagnóstico profundo, capturas y cruces de datos. También puede invocarse como `$seo full`.
 
 ## Instalación local
 
@@ -41,5 +41,5 @@ Las 50 Marketing Skills proceden de `coreyhaines31/marketingskills`, snapshot `d
 
 - Los tokens OAuth permanecen en el Llavero de macOS.
 - Las APIs Google se usan en modo lectura; Business Profile requiere el scope de Google `business.manage`, aunque las herramientas expuestas no escriben.
-- El dashboard es de solo lectura y no se publica.
+- El contenido probatorio de cada snapshot es de solo lectura. El dashboard solo permite editar el tracker de incidencias, protegido por loopback, mismo origen y token CSRF.
 - El único almacenamiento modificable por el plugin es `.seo-data/`.

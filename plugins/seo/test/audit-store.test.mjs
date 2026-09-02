@@ -10,7 +10,7 @@ test("guarda, filtra y recupera una auditoría privada", async () => {
   const store = new AuditStore();
   const saved = await store.save({ id: "audit-one", title: "Auditoría técnica", project: { slug: "taxiprime", name: "TaxiPrime" }, profileId: "taxiprime", auditType: "seo-audit", status: "completed", score: 91, summary: "Sin bloqueos críticos", skillsUsed: ["seo-audit"], tags: ["production"], kpis: [{ id: "organic-clicks", label: "Clics orgánicos", value: 232, formatted: "232", previousValue: 174, previousFormatted: "174", delta: "+33,3%", sentiment: "positive", source: "Search Console", context: "90 días frente al periodo anterior" }], charts: [{ id: "clicks-period", title: "Clics por periodo", type: "bar", description: "Comparativa homogénea", unit: "", source: "Search Console", series: [{ name: "Clics", color: "lime", points: [{ label: "Anterior", value: 174 }, { label: "Actual", value: 232 }] }] }], reportMarkdown: "# Resultado\nCorrecto." });
   assert.equal(saved.score, 91);
-  assert.equal(saved.version, 2);
+  assert.equal(saved.version, 3);
   assert.equal(saved.kpis[0].delta, 58);
   assert.equal(Math.round(saved.kpis[0].deltaPercent), 33);
   assert.equal(saved.datasets[0].rows[1].values.clics, 232);

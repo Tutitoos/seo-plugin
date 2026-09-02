@@ -1,0 +1,31 @@
+---
+import Layout from "../../../../layouts/Layout.astro";
+import PageTable from "../../../../components/PageTable.astro";
+import { AuditStore } from "../../../../audit-store.mjs";
+import { AuditDetailStore } from "../../../../audit-detail-store.mjs";
+const { id } = Astro.params;
+let audit;
+try { audit = await new AuditStore().get(id); } catch { return Astro.redirect("/"); }
+const params = Astro.url.searchParams;
+const offset = Math.max(0, Number(params.get("offset")) || 0), limit = 50;
+const filters = { query: params.get("query") || undefined, sitemap: params.get("sitemap") || undefined, template: params.get("template") || undefined, locale: params.get("locale") || undefined, indexability: params.get("indexability") || undefined, coverage: params.get("coverage") || undefined, health: params.get("health") || undefined, sort: params.get("sort") || undefined, order: params.get("order") || undefined, offset, limit };
+const result = await new AuditDetailStore().listPages(id, filters);
+const pageUrl = (nextOffset: number) => { const next = new URLSearchParams(params); next.set("offset", String(nextOffset)); return `${Astro.url.pathname}?${next}`; };
+---
+<Layout title={`Páginas · ${audit.manifest.project.name} · SEO Workspace`}>
+  <header class="page-intro"><p class="eyebrow"><a href={`/audits/${id}?view=pages`}>← {audit.manifest.title}</a></p><h1>Auditoría página por página.</h1><p class="lede">Estado técnico, indexabilidad, cobertura y datos orgánicos de cada URL descubierta.</p></header>
+  <form class="panel page-filters" method="get">
+    <label class="field filter-search"><span class="field-label">Buscar URL o título</span><input type="search" name="query" value={filters.query} placeholder="/servicios, aeropuerto…" /></label>
+    <label class="field"><span class="field-label">Salud</span><select name="health"><option value="">Todas</option>{[["critical","Crítica"],["issues","Con problemas"],["healthy","Correcta"],["unknown","Sin cobertura"]].map(([value,label]) => <option value={value} selected={filters.health===value}>{label}</option>)}</select></label>
+    <label class="field"><span class="field-label">Indexabilidad</span><select name="indexability"><option value="">Todas</option><option value="indexable" selected={filters.indexability==="indexable"}>Indexables</option><option value="blocked" selected={filters.indexability==="blocked"}>Bloqueadas</option></select></label>
+    <label class="field"><span class="field-label">Plantilla</span><select name="template"><option value="">Todas</option>{result.facets.templates.map((value) => <option value={value} selected={filters.template===value}>{value}</option>)}</select></label>
+    <label class="field"><span class="field-label">Idioma</span><select name="locale"><option value="">Todos</option>{result.facets.locales.map((value) => <option value={value} selected={filters.locale===value}>{value}</option>)}</select></label>
+    <label class="field"><span class="field-label">Cobertura</span><select name="coverage"><option value="">Toda</option><option value="complete" selected={filters.coverage==="complete"}>Completa</option><option value="partial" selected={filters.coverage==="partial"}>Parcial</option><option value="none" selected={filters.coverage==="none"}>Sin cobertura</option></select></label>
+    <label class="field"><span class="field-label">Sitemap</span><select name="sitemap"><option value="">Todos</option>{result.facets.sitemaps.map((value) => <option value={value} selected={filters.sitemap===value}>{new URL(value).pathname}</option>)}</select></label>
+    <label class="field"><span class="field-label">Ordenar</span><select name="sort"><option value="url" selected={filters.sort==="url"}>URL</option><option value="health" selected={filters.sort==="health"}>Salud</option><option value="status" selected={filters.sort==="status"}>HTTP</option><option value="clicks" selected={filters.sort==="clicks"}>Clics</option></select></label>
+    <button type="submit">Aplicar filtros</button>
+  </form>
+  <div class="section-head"><div><p class="eyebrow">Inventario del snapshot</p><h2>{result.total} páginas</h2></div><span class="muted">{offset + 1}–{Math.min(offset + limit, result.total)}</span></div>
+  <PageTable auditId={id} pages={result.pages} total={result.total} />
+  <nav class="pagination" aria-label="Paginación">{offset > 0 && <a href={pageUrl(Math.max(0, offset-limit))}>← Anteriores</a>}<span>Página {Math.floor(offset/limit)+1} de {Math.max(1, Math.ceil(result.total/limit))}</span>{offset + limit < result.total && <a href={pageUrl(offset+limit)}>Siguientes →</a>}</nav>
+</Layout>

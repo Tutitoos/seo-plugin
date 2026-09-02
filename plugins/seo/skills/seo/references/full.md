@@ -18,7 +18,9 @@ Produce una auditoría SEO integral, trazable y guardada en el almacén privado 
 
 ## Fuentes y análisis
 
-- Audita rastreo, respuestas HTTP, robots, sitemap, canonicals, redirecciones, indexabilidad, metadatos, encabezados, contenido, imágenes, enlazado interno, arquitectura, datos estructurados, rendimiento y experiencia móvil.
+- Descubre URLs desde índices sitemap, sitemaps, enlaces internos y Search Console. Audita como máximo 500 URLs con controles ligeros de respuesta HTTP, redirecciones, robots, indexabilidad, canonical, hreflang, metadatos, encabezados, contenido, imágenes, schema, enlaces internos y pertenencia al sitemap.
+- Selecciona de forma determinista hasta 50 páginas profundas: primero páginas comerciales y con tráfico, después URLs con incidencias verificadas y representantes de cada plantilla e idioma. En ellas recopila DOM renderizado, capturas desktop/móvil, Lighthouse/CWV disponibles, inspección de Search Console y cruce con GA4. Si una fase no está disponible, conserva cobertura parcial y un diagnóstico; no la simules.
+- Inventaría robots.txt, índices sitemap, sitemaps, `manifest.webmanifest`, iconos, feeds, `llms.txt`, canonicals, hreflang, schema y recursos críticos. Detecta sitemaps anidados, ciclos, duplicados, XML inválido y contradicciones con indexabilidad.
 - Evalúa SEO para IA y oportunidades de contenido cuando exista evidencia suficiente.
 - En Search Console consulta primero la dimensión `date` sin filtros para conservar los totales temporales. Rellena fechas ausentes con `null`, nunca con cero. Calcula medias móviles de 7 y 28 días. Consulta aparte `query` y `page` para ganadores, perdedores y oportunidades, y explica que esas filas están limitadas y anonimizadas y no equivalen al total agregado. Analiza también países, dispositivos, indexación y sitemaps.
 - En GA4 analiza usuarios, sesiones, adquisición, landing pages, engagement, eventos y conversiones. Usa metadatos para validar dimensiones y métricas cuando sea necesario.
@@ -32,7 +34,18 @@ Produce una auditoría SEO integral, trazable y guardada en el almacén privado 
 
 Cada ejecución es un snapshot nuevo con un identificador formado por proyecto y timestamp. Solo puede actualizarse mientras sea `draft`; una auditoría `completed` queda congelada. Consulta `get_project_history` para comparar score, incidencias y KPIs con snapshots anteriores. Nunca sobrescribas un resultado completado.
 
-Guarda un manifiesto v2 ligero y separa los datos visuales en `metrics.json` mediante `save_audit_result`: `periods`, `sourceCoverage`, KPIs numéricos, datasets tipados y especificaciones de gráfica permitidas. Usa datasets `timeseries`, `categorical` o `matrix`, fechas ISO y unidades explícitas. No introduzcas configuración ECharts arbitraria.
+Guarda un manifiesto v3 ligero y separa los datos visuales en `metrics.json` mediante `save_audit_result`: `periods`, `sourceCoverage`, KPIs numéricos, datasets tipados y especificaciones de gráfica permitidas. Usa datasets `timeseries`, `categorical` o `matrix`, fechas ISO y unidades explícitas. No introduzcas configuración ECharts arbitraria.
+
+La persistencia v3 es por fases y cada llamada debe comprobarse antes de continuar:
+
+1. Crea o actualiza el resumen draft con `save_audit_result`, incluidos `executive.state`, `executive.change` y hasta cinco prioridades con motivo y criterio de validación.
+2. Guarda el conjunto completo de incidencias con `save_audit_findings`. Cada P0-P3 debe explicar qué ocurre, evidencia exacta, impacto, URLs, confianza y al menos una acción con pasos, responsable sugerido, esfuerzo y verificación.
+3. Guarda inventario y diagnósticos con `save_audit_inventory`. Cada error usa código estable, etapa, fuente, alcance, si admite reintento, efecto en la completitud y próxima acción exacta.
+4. Guarda páginas con `save_audit_page_batch`, entre 1 y 25 por llamada. No superes 500 totales ni 50 profundas. Usa la URL normalizada para un identificador estable y registra descubrimiento, sitemap, plantilla, idioma, profundidad, cobertura y nivel.
+5. Para cada página profunda, captura desktop y móvil con el navegador autorizado y guarda primero los PNG en una ruta temporal. Ejecuta `npm run attach:evidence -- --audit=<id> --page=<page-id> --desktop=<png> --mobile=<png> --dom=<html>` desde el plugin; el helper valida el PNG, escribe de forma atómica y actualiza la página. No adjuntes capturas a páginas ligeras.
+6. Verifica el inventario con `list_audit_pages` y páginas críticas con `get_audit_page`. Mantén las capturas exclusivamente en `pages/<page-id>/assets/`.
+
+No asignes una puntuación SEO arbitraria por URL. La salud de página es `crítica`, `con problemas`, `correcta` o `sin cobertura`, determinada por la peor incidencia comprobada y la cobertura real.
 
 Antes del informe narrativo construye un panel con KPIs comparables. Cada KPI debe incluir valor actual, valor anterior cuando exista, delta, fuente, periodo o contexto y una interpretación semántica: `positive`, `negative`, `neutral` o `warning`. La dirección numérica no determina por sí sola la interpretación: una posición media que sube numéricamente puede ser negativa.
 
@@ -62,16 +75,19 @@ Usa `line` o `area` para históricos, `bar`/`stacked-bar` para comparaciones, `s
 
 ### Informe completo
 
-Incluye además:
+Incluye además, con lenguaje breve y legible:
 
 - resumen ejecutivo y puntuación global de 0 a 100;
 - cobertura real de cada fuente y conexiones pendientes;
-- hallazgos `P0`, `P1`, `P2` y positivos, con evidencia, impacto, solución concreta, responsable sugerido y esfuerzo;
+- una lectura ejecutiva en tres niveles: estado y cobertura, qué cambió desde el snapshot anterior y cinco acciones prioritarias con motivo, impacto y criterio de validación;
+- hallazgos `P0`, `P1`, `P2` y positivos, con evidencia, impacto, solución concreta, pasos, responsable sugerido, esfuerzo y forma de verificar;
 - oportunidades priorizadas y plan de acción a 30, 60 y 90 días;
 - skills utilizadas y metodología;
 - anexos concisos para datos tabulares relevantes.
 
-Al terminar, llama a `save_audit_result`. Usa el proyecto, perfil, periodos primario/comparativo/histórico, cobertura, estado, puntuación, resumen, skills, etiquetas, `kpis`, `datasets`, `charts` y el informe Markdown completo. Omite `id` para que el almacén cree el snapshot con timestamp, excepto al continuar un borrador conocido. Los identificadores deben usar solo minúsculas, números y guiones. Cada dataset y gráfica debe citar su procedencia y contener únicamente números verificados. Comprueba después con `get_audit_result` que el resultado y `metrics.json` quedaron disponibles. Si alguna fuente quedó pendiente, guarda `draft`; actualiza ese mismo borrador cuando se complete la cobertura.
+Al terminar, actualiza `save_audit_result` con el proyecto, perfil, periodos, cobertura, estado, puntuación, resumen ejecutivo, skills, etiquetas, `kpis`, `datasets`, `charts` y el informe Markdown completo. Omite `id` para crear un snapshot nuevo, excepto al continuar un borrador conocido. Cada dataset y gráfica debe citar su procedencia y contener únicamente números verificados. Comprueba con `get_audit_result`, `list_audit_pages` y `get_audit_page` que todas las capas quedaron disponibles. Si alguna fuente quedó pendiente, guarda `draft`; actualiza ese mismo borrador cuando se complete la cobertura.
+
+El tracker no forma parte del snapshot. Usa `manage_finding_workflow` solo para estados `pending`, `in_progress`, `resolved` o `accepted`, responsable, fecha y notas. Resolver significa “pendiente de verificación”: una auditoría posterior confirma si desapareció o la reabre si continúa. Aceptar un riesgo exige motivo y nunca borra la evidencia.
 
 ## Control de completitud
 
@@ -86,3 +102,6 @@ Antes de cerrar, confirma explícitamente:
 - P0/P1/P2 con evidencia, impacto, solución, responsable y esfuerzo;
 - cruce entre GSC, GA4, Business Profile y rastreo cuando las conexiones lo permiten;
 - plan 30/60/90 vinculado a indicadores que permitan comprobar el resultado.
+- inventario técnico completo, listado de URLs y hasta 50 páginas profundas con cobertura honesta;
+- hallazgos estructurados y diagnósticos accionables, sin HTML no confiable ni secretos;
+- ciclo del tracker coherente con la nueva detección, verificación, reapertura y riesgo aceptado.
